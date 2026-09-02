@@ -1,0 +1,17 @@
+# Build output
+blackbeard_void_pro
+src/*.o
+
+# Reverse-engineering material and experiments. Kept on disk because the
+# findings are documented in research/work.md, but out of the repository:
+# it holds gigabytes of captures, Wine prefixes and vendor installers, and
+# none of it is needed to build or run the application.
+research/
+
+# Tooling config, not part of the project
+.mcp.json
+.claude/
+
+# Editor / OS noise
+*~
+.DS_Store
