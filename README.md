@@ -51,11 +51,7 @@ channel, so Windows receives the same stream.
 src/         the application (C, GTK 3, hidapi)
 filters/     measured impulse responses
 install.sh   interactive installer
-research/    reverse-engineering log, captures and tooling (not in git)
 ```
-
-`research/work.md` documents how every protocol and measurement was
-obtained, including the dead ends and why they were dead ends.
 
 ## Settings
 
