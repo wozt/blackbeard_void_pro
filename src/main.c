@@ -32,7 +32,6 @@ typedef struct {
     bvp_config  cfg;
     GtkWidget  *window;
     GtkWidget  *mode_dot;      /* state at a glance, in place of a status line */
-    GtkWidget  *dolby_switch;
     GtkWidget  *mode_combo;
     GtkWidget  *save_btn;
     bool        dirty;
@@ -240,19 +239,6 @@ static void set_pct(GtkWidget *label, int pct)
 
 /* ---------- UI callbacks ---------- */
 
-static void on_dolby(GtkSwitch *sw, GParamSpec *ps, gpointer data)
-{
-    if (app.suppress) return;
-    app.cfg.dolby = gtk_switch_get_active(sw);
-    /* the switch and the first dropdown entry say the same thing */
-    app.suppress = true;
-    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
-                             app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
-    app.suppress = false;
-    update_dot();
-    apply_audio();
-}
-
 static void on_mode(GtkComboBox *c, gpointer data)
 {
     (void)data;
@@ -270,7 +256,6 @@ static void on_mode(GtkComboBox *c, gpointer data)
                             app.cfg.eq[app.cfg.dolby_mode][i]);
     gtk_range_set_value(GTK_RANGE(app.preamp_scale),
                         app.cfg.preamp[app.cfg.dolby_mode]);
-    gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
     app.suppress = false;
     gtk_widget_queue_draw(app.eq_area);
     update_dot();
@@ -384,7 +369,6 @@ static void on_load(GtkButton *b, gpointer data)
     clamp_mode();
 
     app.suppress = true;
-    gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
                              app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
     for (int i = 0; i < BVP_BANDS; i++)
@@ -674,20 +658,7 @@ static void build_ui(void)
     gtk_box_pack_start(GTK_BOX(z2), app.headless_check, FALSE, FALSE, 0);
 
 
-    /* ---- 3 : Dolby switch, curve, equaliser, preamp ---- */
-    GtkWidget *drow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_box_pack_start(GTK_BOX(drow),
-                       labelled("<b>Dolby</b>", GTK_ALIGN_START), TRUE, TRUE, 0);
-    app.dolby_switch = gtk_switch_new();
-    gtk_widget_set_tooltip_text(app.dolby_switch,
-        "Virtual surround: reproduces, by convolution, the processing "
-        "Windows applies host-side.");
-    gtk_widget_set_valign(app.dolby_switch, GTK_ALIGN_CENTER);
-    g_signal_connect(app.dolby_switch, "notify::active",
-                     G_CALLBACK(on_dolby), NULL);
-    gtk_box_pack_start(GTK_BOX(drow), app.dolby_switch, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(z3), drow, FALSE, FALSE, 0);
-
+    /* ---- 3 : curve, equaliser, preamp ---- */
     app.eq_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(app.eq_area, -1, 80);
     g_signal_connect(app.eq_area, "draw", G_CALLBACK(on_eq_draw), NULL);
@@ -862,7 +833,6 @@ static void on_activate(GtkApplication *gapp, gpointer data)
     bvp_tray_init(app.window);
 
     app.suppress = true;
-    gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
     int mic = bvp_audio_get_mic_gain();     /* trust the device over the file */
     if (mic >= 0) {
         app.cfg.mic_gain = (uint8_t)mic;
