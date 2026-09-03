@@ -20,7 +20,7 @@
 typedef struct {
     bvp_config  cfg;
     GtkWidget  *window;
-    GtkWidget  *status_label;
+    GtkWidget  *mode_dot;      /* state at a glance, in place of a status line */
     GtkWidget  *dolby_switch;
     GtkWidget  *mode_combo;
     GtkWidget  *save_btn;
@@ -32,7 +32,12 @@ typedef struct {
     GtkWidget  *color_btn;
     GtkWidget  *bright_scale;
     GtkWidget  *mic_scale;
-    GtkWidget  *battery_label;
+    GtkWidget  *bright_pct;
+    GtkWidget  *mic_pct;
+    GtkWidget  *batt_area;
+    GtkWidget  *batt_label;
+    int         batt_percent;  /* -1 when unknown */
+    bool        batt_present;
     bool        suppress;      /* ignore signals caused by our own updates */
     bool        last_present;
     guint       eq_timer;
@@ -50,8 +55,7 @@ static void apply_audio(void)
     if (app.cfg.dolby) {
         char *err = NULL;
         if (!bvp_audio_apply(&app.cfg, &err)) {
-            gtk_label_set_text(GTK_LABEL(app.status_label),
-                               err ? err : "audio chain failed");
+            g_warning("%s", err ? err : "audio chain failed");
             g_free(err);
         }
     } else {
@@ -80,7 +84,6 @@ static void on_save(GtkButton *b, gpointer data)
     bvp_config_save(&app.cfg);
     app.dirty = false;
     gtk_widget_set_sensitive(app.save_btn, FALSE);
-    gtk_label_set_text(GTK_LABEL(app.status_label), "Settings saved.");
 }
 
 /* Coalesce slider movement: reloading the chain on every pixel would
@@ -135,12 +138,98 @@ static gboolean on_eq_draw(GtkWidget *w, cairo_t *cr, gpointer data)
     return FALSE;
 }
 
+/* ---------- state indicator, battery gauge ---------- */
+
+/* Red at empty through yellow to green at full: the same ramp the tray
+   icon uses, so the two never disagree. */
+static void level_color(double f, double *r, double *g, double *b)
+{
+    f = CLAMP(f, 0.0, 1.0);
+    if (f < 0.5) { *r = 0.90; *g = 0.20 + 1.20 * f; *b = 0.15; }
+    else         { *r = 0.90 - 1.50 * (f - 0.5); *g = 0.80; *b = 0.15; }
+}
+
+/* The dropdown carries the method, so a single dot in front of it can say
+   everything the old status line said: what is running, and whether the
+   dongle answered at all. */
+static void update_dot(void)
+{
+    const char *col, *what;
+    if (!app.batt_present)      { col = "#e04a3a"; what = "dongle not detected"; }
+    else if (!app.cfg.dolby)    { col = "#f0902a"; what = "normal, no processing"; }
+    else if (app.cfg.dolby_mode == 0) { col = "#3ec46d"; what = "convolution 1.0"; }
+    else                        { col = "#2ec8c8"; what = "convolution 2.0"; }
+
+    char *m = g_strdup_printf("<span foreground=\"%s\" size=\"large\">\xe2\x97\x8f</span>", col);
+    gtk_label_set_markup(GTK_LABEL(app.mode_dot), m);
+    g_free(m);
+
+    char tip[128];
+    if (!app.batt_present)
+        g_snprintf(tip, sizeof(tip), "Dongle not detected \xe2\x80\x94 plug in the USB receiver");
+    else if (app.batt_percent < 0)
+        g_snprintf(tip, sizeof(tip), "Dongle detected \xe2\x80\x94 %s", what);
+    else
+        g_snprintf(tip, sizeof(tip), "Dongle detected, headset at %d%% \xe2\x80\x94 %s",
+                   app.batt_percent, what);
+    gtk_widget_set_tooltip_text(app.mode_dot, tip);
+}
+
+/* Informative only: a bar shaped like the two next to it, but nothing to
+   drag -- the headset decides its own charge. */
+static gboolean on_batt_draw(GtkWidget *w, cairo_t *cr, gpointer data)
+{
+    (void)data;
+    int width  = gtk_widget_get_allocated_width(w);
+    int height = gtk_widget_get_allocated_height(w);
+    double bw = MIN(width, 10.0), x = (width - bw) / 2.0, rad = bw / 2.0;
+
+    cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.25);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + rad, rad, rad, M_PI, 2 * M_PI);
+    cairo_arc(cr, x + rad, height - rad, rad, 0, M_PI);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+
+    if (app.batt_percent < 0)
+        return FALSE;
+
+    double f = app.batt_percent / 100.0, h = f * height, r, g, b;
+    level_color(f, &r, &g, &b);
+    cairo_set_source_rgb(cr, r, g, b);
+    cairo_save(cr);
+    cairo_rectangle(cr, 0, height - h, width, h);
+    cairo_clip(cr);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + rad, rad, rad, M_PI, 2 * M_PI);
+    cairo_arc(cr, x + rad, height - rad, rad, 0, M_PI);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+    cairo_restore(cr);
+    return FALSE;
+}
+
+static void set_pct(GtkWidget *label, int pct)
+{
+    char b[16];
+    g_snprintf(b, sizeof(b), "%d%%", pct);
+    char *m = g_markup_printf_escaped("<small>%s</small>", b);
+    gtk_label_set_markup(GTK_LABEL(label), m);
+    g_free(m);
+}
+
 /* ---------- UI callbacks ---------- */
 
 static void on_dolby(GtkSwitch *sw, GParamSpec *ps, gpointer data)
 {
     if (app.suppress) return;
     app.cfg.dolby = gtk_switch_get_active(sw);
+    /* the switch and the first dropdown entry say the same thing */
+    app.suppress = true;
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
+                             app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
+    app.suppress = false;
+    update_dot();
     apply_audio();
 }
 
@@ -148,7 +237,10 @@ static void on_mode(GtkComboBox *c, gpointer data)
 {
     (void)data;
     if (app.suppress) return;
-    app.cfg.dolby_mode = gtk_combo_box_get_active(c);
+    int idx = gtk_combo_box_get_active(c);
+    app.cfg.dolby = idx > 0;                /* entry 0 is "Normal" */
+    if (idx > 0)
+        app.cfg.dolby_mode = idx - 1;
 
     /* each method keeps its own curve: show the one that belongs to the
        method we just switched to */
@@ -158,8 +250,10 @@ static void on_mode(GtkComboBox *c, gpointer data)
                             app.cfg.eq[app.cfg.dolby_mode][i]);
     gtk_range_set_value(GTK_RANGE(app.preamp_scale),
                         app.cfg.preamp[app.cfg.dolby_mode]);
+    gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
     app.suppress = false;
     gtk_widget_queue_draw(app.eq_area);
+    update_dot();
 
     mark_dirty();
     apply_audio();
@@ -270,7 +364,8 @@ static void on_load(GtkButton *b, gpointer data)
 
     app.suppress = true;
     gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
-    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
+                             app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
     for (int i = 0; i < BVP_BANDS; i++)
         gtk_range_set_value(GTK_RANGE(app.eq_scales[i]),
                             app.cfg.eq[app.cfg.dolby_mode][i]);
@@ -283,13 +378,15 @@ static void on_load(GtkButton *b, gpointer data)
     app.suppress = false;
 
     gtk_widget_queue_draw(app.eq_area);
+    set_pct(app.bright_pct, app.cfg.brightness * 100 / 255);
+    set_pct(app.mic_pct, app.cfg.mic_gain);
+    update_dot();
     bvp_audio_set_mic_gain(app.cfg.mic_gain);
     push_led();
     apply_audio();
 
     app.dirty = false;
     gtk_widget_set_sensitive(app.save_btn, FALSE);
-    gtk_label_set_text(GTK_LABEL(app.status_label), "Saved settings restored.");
 }
 
 /* Replaying the lighting sequence takes about 0.8 s and blocks, so slider
@@ -326,6 +423,7 @@ static void on_mic(GtkRange *r, gpointer data)
     (void)data;
     if (app.suppress) return;
     app.cfg.mic_gain = (uint8_t)gtk_range_get_value(r);
+    set_pct(app.mic_pct, app.cfg.mic_gain);
     bvp_audio_set_mic_gain(app.cfg.mic_gain);
     mark_dirty();
 }
@@ -351,6 +449,7 @@ static void on_bright(GtkRange *r, gpointer data)
 {
     if (app.suppress) return;
     app.cfg.brightness = (uint8_t)gtk_range_get_value(r);
+    set_pct(app.bright_pct, app.cfg.brightness * 100 / 255);
     push_led();
 }
 
@@ -372,18 +471,17 @@ static gboolean poll_device(gpointer data)
         missing = 0;
     }
 
-    GString *s = g_string_new(NULL);
-    if (!st.dongle_present) {
-        g_string_append(s, "Dongle not detected \xe2\x80\x94 plug in the USB receiver");
-    } else if (st.percent < 0) {
-        g_string_append_printf(s, "Dongle detected \xe2\x80\x94 %s",
-                               bvp_state_label(st.state));
-    } else {
-        g_string_append_printf(s, "Dongle detected \xe2\x80\x94 headset at %d%% (%s)",
-                               st.percent, bvp_state_label(st.state));
-    }
-    gtk_label_set_text(GTK_LABEL(app.status_label), s->str);
-    g_string_free(s, TRUE);
+    app.batt_present = st.dongle_present;
+    app.batt_percent = st.dongle_present ? st.percent : -1;
+    update_dot();
+    gtk_widget_queue_draw(app.batt_area);
+    if (app.batt_percent < 0)
+        gtk_label_set_markup(GTK_LABEL(app.batt_label), "<small>--</small>");
+    else
+        set_pct(app.batt_label, app.batt_percent);
+    gtk_widget_set_tooltip_text(app.batt_area,
+                                st.dongle_present ? bvp_state_label(st.state)
+                                                  : "Dongle not detected");
 
     gtk_widget_set_sensitive(app.color_btn,   st.dongle_present);
     gtk_widget_set_sensitive(app.bright_scale, st.dongle_present);
@@ -464,10 +562,6 @@ static void build_ui(void)
     gtk_container_set_border_width(GTK_CONTAINER(outer), 10);
     gtk_container_add(GTK_CONTAINER(app.window), outer);
 
-    app.status_label = labelled("<b>Looking for the dongle\xe2\x80\xa6</b>",
-                                GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(outer), app.status_label, FALSE, FALSE, 0);
-
     /* Four quadrants, separated by rules:
          1  method            |  2  startup
          3  Dolby + equaliser |  4  lighting and microphone            */
@@ -493,17 +587,25 @@ static void build_ui(void)
     gtk_widget_set_hexpand(z3, TRUE);
 
     /* ---- 1 : which method ---- */
-    gtk_box_pack_start(GTK_BOX(z1),
+    GtkWidget *mrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    app.mode_dot = gtk_label_new(NULL);
+    gtk_box_pack_start(GTK_BOX(mrow), app.mode_dot, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(mrow),
                        labelled("<b>Method</b> (Dolby Surround Emulation)",
                                 GTK_ALIGN_START), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z1), mrow, FALSE, FALSE, 0);
     app.mode_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+        "Normal (no processing)");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Convolution 1.0");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Convolution 2.0");
-    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
+                             app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
     gtk_widget_set_tooltip_text(app.mode_combo,
-        "Both replay impulse responses measured on the hardware.\n"
+        "Normal leaves the sound untouched.\n"
+        "Both convolutions replay impulse responses measured on the hardware.\n"
         "1.0 comes from a single measurement.\n"
         "2.0 averages several sweeps, drops the deconvolution regularisation "
         "now that the noise floor is lower, keeps only the swept "
@@ -658,9 +760,12 @@ static void build_ui(void)
     g_signal_connect(app.bright_scale, "value-changed",
                      G_CALLBACK(on_bright), NULL);
     gtk_grid_attach(GTK_GRID(side), app.bright_scale, 0, 2, 1, 1);
+    app.bright_pct = gtk_label_new(NULL);
+    set_pct(app.bright_pct, app.cfg.brightness * 100 / 255);
+    gtk_grid_attach(GTK_GRID(side), app.bright_pct, 0, 3, 1, 1);
 
     gtk_grid_attach(GTK_GRID(side),
-                    gtk_separator_new(GTK_ORIENTATION_VERTICAL), 1, 0, 1, 3);
+                    gtk_separator_new(GTK_ORIENTATION_VERTICAL), 1, 0, 1, 4);
 
     GtkWidget *mic_icon = gtk_image_new_from_icon_name(
         "audio-input-microphone-symbolic", GTK_ICON_SIZE_MENU);
@@ -679,6 +784,29 @@ static void build_ui(void)
         "single channel, so Windows receives the same stream.");
     g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
     gtk_grid_attach(GTK_GRID(side), app.mic_scale, 2, 1, 1, 2);
+    app.mic_pct = gtk_label_new(NULL);
+    set_pct(app.mic_pct, app.cfg.mic_gain);
+    gtk_grid_attach(GTK_GRID(side), app.mic_pct, 2, 3, 1, 1);
+
+    gtk_grid_attach(GTK_GRID(side),
+                    gtk_separator_new(GTK_ORIENTATION_VERTICAL), 3, 0, 1, 4);
+
+    GtkWidget *batt_icon = gtk_image_new_from_icon_name(
+        "battery-good-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_widget_set_valign(batt_icon, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(side), batt_icon, 4, 0, 1, 1);
+
+    app.batt_percent = -1;
+    app.batt_area = gtk_drawing_area_new();
+    gtk_widget_set_size_request(app.batt_area, 12, -1);
+    gtk_widget_set_vexpand(app.batt_area, TRUE);
+    gtk_widget_set_halign(app.batt_area, GTK_ALIGN_CENTER);
+    g_signal_connect(app.batt_area, "draw", G_CALLBACK(on_batt_draw), NULL);
+    gtk_grid_attach(GTK_GRID(side), app.batt_area, 4, 1, 1, 2);
+
+    app.batt_label = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(app.batt_label), "<small>--</small>");
+    gtk_grid_attach(GTK_GRID(side), app.batt_label, 4, 3, 1, 1);
 
     gtk_box_pack_start(GTK_BOX(z4), side, TRUE, TRUE, 0);
 }
@@ -721,6 +849,7 @@ static void on_activate(GtkApplication *gapp, gpointer data)
         gtk_range_set_value(GTK_RANGE(app.mic_scale), mic);
     }
     app.suppress = false;
+    update_dot();
 
     /* show_all first even in headless mode: otherwise the children stay
        hidden and "Open" from the tray would present an empty window */
