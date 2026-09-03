@@ -416,6 +416,18 @@ static GtkWidget *labelled(const char *markup, GtkAlign align)
     return l;
 }
 
+/* The startup labels are the widest text in the right-hand column, and
+   that column also holds the lighting and microphone sliders: a notch of
+   type smaller there keeps them from setting the window width. */
+static GtkWidget *small_check(const char *text)
+{
+    GtkWidget *b = gtk_check_button_new_with_label(text);
+    char *m = g_markup_printf_escaped("<small>%s</small>", text);
+    gtk_label_set_markup(GTK_LABEL(gtk_bin_get_child(GTK_BIN(b))), m);
+    g_free(m);
+    return b;
+}
+
 static void build_ui(void)
 {
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -513,7 +525,7 @@ static void build_ui(void)
     g_signal_connect(load_btn, "clicked", G_CALLBACK(on_load), NULL);
     gtk_box_pack_start(GTK_BOX(btns), load_btn, FALSE, FALSE, 0);
 
-    GtkWidget *flat_btn = gtk_button_new_with_label("Flat");
+    GtkWidget *flat_btn = gtk_button_new_with_label("Flat EQ");
     gtk_widget_set_tooltip_text(flat_btn, "Set every equaliser band to 0 dB.");
     g_signal_connect(flat_btn, "clicked", G_CALLBACK(on_flat), NULL);
     gtk_box_pack_start(GTK_BOX(btns), flat_btn, FALSE, FALSE, 0);
@@ -522,16 +534,14 @@ static void build_ui(void)
     /* ---- 2 : startup ---- */
     gtk_box_pack_start(GTK_BOX(z2),
                        labelled("<b>Startup</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
-    app.autostart_check =
-        gtk_check_button_new_with_label("Start at login");
+    app.autostart_check = small_check("Start at login");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.autostart_check),
                                  bvp_desktop_autostart_enabled());
     g_signal_connect(app.autostart_check, "toggled",
                      G_CALLBACK(on_autostart), NULL);
     gtk_box_pack_start(GTK_BOX(z2), app.autostart_check, FALSE, FALSE, 0);
 
-    app.headless_check =
-        gtk_check_button_new_with_label("Headless (tray only)");
+    app.headless_check = small_check("Headless (tray only)");
     gtk_widget_set_tooltip_text(app.headless_check,
         "Start hidden. The tray icon is still there; use its Open entry to "
         "bring the window back.");
@@ -653,9 +663,10 @@ static void build_ui(void)
                     gtk_separator_new(GTK_ORIENTATION_VERTICAL), 1, 0, 1, 3);
 
     GtkWidget *mic_icon = gtk_image_new_from_icon_name(
-        "audio-input-microphone-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+        "audio-input-microphone-symbolic", GTK_ICON_SIZE_MENU);
     gtk_widget_set_tooltip_text(mic_icon, "Headset microphone.");
-    gtk_grid_attach(GTK_GRID(side), mic_icon, 2, 1, 1, 1);
+    gtk_widget_set_valign(mic_icon, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(side), mic_icon, 2, 0, 1, 1);
 
     app.mic_scale = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 100, 1);
     gtk_range_set_inverted(GTK_RANGE(app.mic_scale), TRUE);
@@ -667,7 +678,7 @@ static void build_ui(void)
         "The microphone is mono in hardware: its USB descriptor declares a "
         "single channel, so Windows receives the same stream.");
     g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
-    gtk_grid_attach(GTK_GRID(side), app.mic_scale, 2, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(side), app.mic_scale, 2, 1, 1, 2);
 
     gtk_box_pack_start(GTK_BOX(z4), side, TRUE, TRUE, 0);
 }
