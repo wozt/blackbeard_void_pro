@@ -482,44 +482,24 @@ static void build_ui(void)
 
     /* ---- 1 : which method ---- */
     gtk_box_pack_start(GTK_BOX(z1),
-                       labelled("<b>Method</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
+                       labelled("<b>Method</b> (Dolby Surround Emulation)",
+                                GTK_ALIGN_START), FALSE, FALSE, 0);
     app.mode_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
-        "Convolution 1.0 (single measurement)");
+        "Convolution 1.0");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
-        "Convolution 2.0 (averaged, band-limited)");
+        "Convolution 2.0");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
     gtk_widget_set_tooltip_text(app.mode_combo,
         "Both replay impulse responses measured on the hardware.\n"
+        "1.0 comes from a single measurement.\n"
         "2.0 averages several sweeps, drops the deconvolution regularisation "
         "now that the noise floor is lower, keeps only the swept "
         "20 Hz - 20 kHz band, and stops truncating the reverb tail.");
     g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
     gtk_box_pack_start(GTK_BOX(z1), app.mode_combo, FALSE, FALSE, 0);
 
-    /* ---- 2 : startup and settings ---- */
-    gtk_box_pack_start(GTK_BOX(z2),
-                       labelled("<b>Startup</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
-    app.autostart_check =
-        gtk_check_button_new_with_label("Start when I log in");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.autostart_check),
-                                 bvp_desktop_autostart_enabled());
-    g_signal_connect(app.autostart_check, "toggled",
-                     G_CALLBACK(on_autostart), NULL);
-    gtk_box_pack_start(GTK_BOX(z2), app.autostart_check, FALSE, FALSE, 0);
-
-    app.headless_check =
-        gtk_check_button_new_with_label("Headless (tray icon only)");
-    gtk_widget_set_tooltip_text(app.headless_check,
-        "Start hidden. The tray icon is still there; use its Open entry to "
-        "bring the window back.");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.headless_check),
-                                 app.cfg.headless);
-    g_signal_connect(app.headless_check, "toggled",
-                     G_CALLBACK(on_headless), NULL);
-    gtk_box_pack_start(GTK_BOX(z2), app.headless_check, FALSE, FALSE, 0);
-
-    GtkWidget *btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     app.save_btn = gtk_button_new_with_label("Save");
     gtk_widget_set_sensitive(app.save_btn, FALSE);
     gtk_widget_set_tooltip_text(app.save_btn, "Write the current settings to disk.");
@@ -537,7 +517,30 @@ static void build_ui(void)
     gtk_widget_set_tooltip_text(flat_btn, "Set every equaliser band to 0 dB.");
     g_signal_connect(flat_btn, "clicked", G_CALLBACK(on_flat), NULL);
     gtk_box_pack_start(GTK_BOX(btns), flat_btn, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(z2), btns, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(z1), btns, FALSE, FALSE, 2);
+
+    /* ---- 2 : startup ---- */
+    gtk_box_pack_start(GTK_BOX(z2),
+                       labelled("<b>Startup</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
+    app.autostart_check =
+        gtk_check_button_new_with_label("Start at login");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.autostart_check),
+                                 bvp_desktop_autostart_enabled());
+    g_signal_connect(app.autostart_check, "toggled",
+                     G_CALLBACK(on_autostart), NULL);
+    gtk_box_pack_start(GTK_BOX(z2), app.autostart_check, FALSE, FALSE, 0);
+
+    app.headless_check =
+        gtk_check_button_new_with_label("Headless (tray only)");
+    gtk_widget_set_tooltip_text(app.headless_check,
+        "Start hidden. The tray icon is still there; use its Open entry to "
+        "bring the window back.");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.headless_check),
+                                 app.cfg.headless);
+    g_signal_connect(app.headless_check, "toggled",
+                     G_CALLBACK(on_headless), NULL);
+    gtk_box_pack_start(GTK_BOX(z2), app.headless_check, FALSE, FALSE, 0);
+
 
     /* ---- 3 : Dolby switch, curve, equaliser, preamp ---- */
     GtkWidget *drow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -617,17 +620,20 @@ static void build_ui(void)
        line up row by row, so both columns read at the same heights as the
        equaliser next to them. */
     GtkWidget *side = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(side), 10);
+    gtk_grid_set_column_spacing(GTK_GRID(side), 6);
     gtk_grid_set_row_spacing(GTK_GRID(side), 2);
+    /* hug the left edge: the column is as wide as the startup checkboxes
+       above it, and centring would leave the two bars floating in it */
+    gtk_widget_set_halign(side, GTK_ALIGN_START);
 
     GtkWidget *led_lbl = labelled("<b>LED</b>", GTK_ALIGN_CENTER);
-    gtk_widget_set_hexpand(led_lbl, TRUE);
     gtk_grid_attach(GTK_GRID(side), led_lbl, 0, 0, 1, 1);
 
     GdkRGBA c = { app.cfg.r / 255.0, app.cfg.g / 255.0, app.cfg.b / 255.0, 1.0 };
     app.color_btn = gtk_color_button_new_with_rgba(&c);
     gtk_widget_set_tooltip_text(app.color_btn, "Colour of the headset lighting.");
     gtk_widget_set_halign(app.color_btn, GTK_ALIGN_CENTER);
+    gtk_widget_set_size_request(app.color_btn, 30, 20);
     g_signal_connect(app.color_btn, "color-set", G_CALLBACK(on_color), NULL);
     gtk_grid_attach(GTK_GRID(side), app.color_btn, 0, 1, 1, 1);
 
@@ -655,7 +661,6 @@ static void build_ui(void)
     gtk_range_set_inverted(GTK_RANGE(app.mic_scale), TRUE);
     gtk_scale_set_draw_value(GTK_SCALE(app.mic_scale), FALSE);
     gtk_widget_set_vexpand(app.mic_scale, TRUE);
-    gtk_widget_set_hexpand(app.mic_scale, TRUE);
     gtk_range_set_value(GTK_RANGE(app.mic_scale), app.cfg.mic_gain);
     gtk_widget_set_tooltip_text(app.mic_scale,
         "Hardware capture gain of the headset, 0 to 100%.\n"
