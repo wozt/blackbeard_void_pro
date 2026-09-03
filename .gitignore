@@ -16,3 +16,4 @@ research/
 *~
 .DS_Store
 test_sound_files/
+tests/chain_probe

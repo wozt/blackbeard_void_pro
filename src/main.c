@@ -158,7 +158,8 @@ static void update_dot(void)
     if (!app.batt_present)      { col = "#e04a3a"; what = "dongle not detected"; }
     else if (!app.cfg.dolby)    { col = "#f0902a"; what = "normal, no processing"; }
     else if (app.cfg.dolby_mode == 0) { col = "#3ec46d"; what = "convolution 1.0"; }
-    else                        { col = "#2ec8c8"; what = "convolution 2.0"; }
+    else if (app.cfg.dolby_mode == 1) { col = "#2ec8c8"; what = "convolution 2.0"; }
+    else                        { col = "#7b8cff"; what = "convolution 3.0"; }
 
     char *m = g_strdup_printf("<span foreground=\"%s\" size=\"large\">\xe2\x97\x8f</span>", col);
     gtk_label_set_markup(GTK_LABEL(app.mode_dot), m);
@@ -601,6 +602,8 @@ static void build_ui(void)
         "Convolution 1.0");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Convolution 2.0");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+        "Convolution 3.0");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
                              app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
     gtk_widget_set_tooltip_text(app.mode_combo,
@@ -609,7 +612,10 @@ static void build_ui(void)
         "1.0 comes from a single measurement.\n"
         "2.0 averages several sweeps, drops the deconvolution regularisation "
         "now that the noise floor is lower, keeps only the swept "
-        "20 Hz - 20 kHz band, and stops truncating the reverb tail.");
+        "20 Hz - 20 kHz band, and stops truncating the reverb tail.\n"
+        "3.0 is identified from real programme material -- music, rain, "
+        "gunfire, crowds -- by least squares against what Windows actually "
+        "sent over USB, rather than from sweeps alone.");
     g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
     gtk_box_pack_start(GTK_BOX(z1), app.mode_combo, FALSE, FALSE, 0);
 

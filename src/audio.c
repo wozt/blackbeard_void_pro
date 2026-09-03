@@ -162,7 +162,10 @@ static void set_default_sink(const char *name)
            the fade pushed to 3400 so the reverb tail is no longer cut */
 static char *version_dir(const bvp_config *cfg)
 {
-    const char *v = (cfg && cfg->dolby_mode == 1) ? "v2" : "v1";
+    static const char *dirs[BVP_MODES] = { "v1", "v2", "v3" };
+    int m = (cfg && cfg->dolby_mode >= 0 && cfg->dolby_mode < BVP_MODES)
+            ? cfg->dolby_mode : 0;
+    const char *v = dirs[m];
     char *p = g_build_filename(filter_dir, v, NULL);
     if (g_file_test(p, G_FILE_TEST_IS_DIR))
         return p;

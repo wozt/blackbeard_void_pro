@@ -31,12 +31,12 @@ grp "Build"
   if make -s 2>/dev/null; then ok "compiles without error"; else ko "compilation failed"; fi
   [ -x "$BIN" ] && ok "binary present" || ko "binary missing"
   miss=0
-  for v in v1 v2; do
+  for v in v1 v2 v3; do
     for f in ir_LL ir_LR ir_RL ir_RR; do
       [ -f "filters/$v/$f.wav" ] || miss=$((miss+1))
     done
   done
-  [ $miss -eq 0 ] && ok "both filter generations present" \
+  [ $miss -eq 0 ] && ok "all three filter generations present" \
                   || ko "$miss filter file(s) missing"
 
   # The installed binary resolves its filters from ~/.local/share, not from
@@ -45,12 +45,12 @@ grp "Build"
   INST=$HOME/.local/share/blackbeard_void_pro/filters
   if [ -x "$HOME/.local/bin/blackbeard_void_pro" ]; then
     imiss=0
-    for v in v1 v2; do
+    for v in v1 v2 v3; do
       for f in ir_LL ir_LR ir_RL ir_RR; do
         [ -f "$INST/$v/$f.wav" ] || imiss=$((imiss+1))
       done
     done
-    [ $imiss -eq 0 ] && ok "installed copy has both generations" \
+    [ $imiss -eq 0 ] && ok "installed copy has all three generations" \
                      || ko "installed copy is missing $imiss filter file(s)"
 
     # The suite otherwise only exercises the source tree, which is how a
@@ -113,8 +113,8 @@ grp "Audio chain (silent: routed to a null sink)"
     kill_app; kill_chain; sleep 1
     MOD=$(pactl load-module module-null-sink sink_name=bvptest 2>/dev/null)
     PROBE=$(ls research/probe_src.wav 2>/dev/null || echo "")
-    for mode in 0 1; do
-      name=$([ $mode = 0 ] && echo "convolution 1.0" || echo "convolution 2.0")
+    for mode in 0 1 2; do
+      name="convolution $((mode+1)).0"
       BVP_TARGET_SINK=bvptest "$ROOT/tests/chain_probe" "$mode" >/dev/null 2>&1 &
       cp=$!
       sleep 3
@@ -158,16 +158,16 @@ grp "Settings"
     # one curve per method: eq<mode>_<band>
     tot=$(grep -cE '^eq[0-9]+_[0-9]+ = ' "$CFG")
     flat=$(grep -cE '^eq[0-9]+_[0-9]+ = 0$' "$CFG")
-    if [ "$tot" -eq 20 ]; then
+    if [ "$tot" -eq 30 ]; then
       ok "per-method equaliser curves stored ($tot bands)"
-      [ "$flat" -eq 20 ] && ok "both equalisers are flat" \
+      [ "$flat" -eq 30 ] && ok "every equaliser is flat" \
         || sk "$((tot-flat)) band(s) not at zero"
     else
-      ko "expected 20 equaliser entries, found $tot"
+      ko "expected 30 equaliser entries, found $tot"
     fi
-    grep -qE '^preamp[01] = ' "$CFG" && ok "per-method preamp stored" \
+    grep -qE '^preamp[012] = ' "$CFG" && ok "per-method preamp stored" \
       || ko "per-method preamp missing"
-    grep -qE '^dolby_mode = [01]$' "$CFG" && ok "dolby mode stored" || ko "dolby mode missing"
+    grep -qE '^dolby_mode = [012]$' "$CFG" && ok "dolby mode stored" || ko "dolby mode missing"
   else
     sk "no config yet (never run)"
   fi

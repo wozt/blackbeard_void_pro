@@ -21,7 +21,7 @@ clean:
 
 install: $(BIN)
 	install -Dm755 $(BIN) $(PREFIX)/bin/$(BIN)
-	for v in v1 v2; do \
+	for v in v1 v2 v3; do \
 	  for f in filters/$$v/*.wav; do \
 	    install -Dm644 "$$f" $(PREFIX)/share/blackbeard_void_pro/filters/$$v/$$(basename $$f); \
 	  done; \

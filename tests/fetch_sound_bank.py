@@ -40,7 +40,7 @@ WANTED = [
     ("speech",        COMMONS, "filetype:audio spoken word recording",   False),
     ("rain_thunder",  BBC,     "thunder rain",                           True),
     ("gunshot",       BBC,     "gunfire rifle",                          True),
-    ("explosion",     BBC,     "explosion",                              True),
+    ("explosion",     BBC,     "explosion",                              False),
     ("engine",        BBC,     "helicopter",                             True),
     ("footsteps",     BBC,     "footsteps gravel",                       True),
     ("vehicle_pass",  BBC,     "car pass by",                            True),
