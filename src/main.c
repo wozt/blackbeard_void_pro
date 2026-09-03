@@ -429,7 +429,7 @@ static void build_ui(void)
     gtk_container_set_border_width(GTK_CONTAINER(root), 12);
     gtk_container_add(GTK_CONTAINER(app.window), root);
 
-    app.status_label = labelled("<b>Recherche du dongle…</b>", GTK_ALIGN_START);
+    app.status_label = labelled("<b>Looking for the dongle\xe2\x80\xa6</b>", GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(root), app.status_label, FALSE, FALSE, 0);
 
     gtk_box_pack_start(GTK_BOX(root),
@@ -442,6 +442,9 @@ static void build_ui(void)
                               GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(row), dl, TRUE, TRUE, 0);
     app.dolby_switch = gtk_switch_new();
+    gtk_widget_set_tooltip_text(app.dolby_switch,
+        "Virtual surround: reproduces, by convolution, the processing "
+        "Windows applies host-side.");
     gtk_widget_set_valign(app.dolby_switch, GTK_ALIGN_CENTER);
     g_signal_connect(app.dolby_switch, "notify::active", G_CALLBACK(on_dolby), NULL);
     gtk_box_pack_start(GTK_BOX(row), app.dolby_switch, FALSE, FALSE, 0);
@@ -456,16 +459,13 @@ static void build_ui(void)
         "Convolution 2.0 (averaged, band-limited)");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
     g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
+    gtk_widget_set_tooltip_text(app.mode_combo,
+        "Both replay impulse responses measured on the hardware.\n"
+        "2.0 averages several sweeps, drops the deconvolution "
+        "regularisation now that the noise floor is lower, keeps only the "
+        "swept 20 Hz - 20 kHz band, and stops truncating the reverb tail.");
     gtk_box_pack_start(GTK_BOX(mrow2), app.mode_combo, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(root), mrow2, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(root),
-        labelled("<small>Both replay impulse responses measured on the hardware. "
-                 "2.0 averages several sweeps, drops the deconvolution "
-                 "regularisation now that the noise floor is lower, keeps only "
-                 "the swept 20 Hz - 20 kHz band, and stops truncating the "
-                 "reverb tail.</small>", GTK_ALIGN_START),
-        FALSE, FALSE, 0);
 
     /* --- equaliser --- */
     gtk_box_pack_start(GTK_BOX(root),
@@ -600,14 +600,12 @@ static void build_ui(void)
                                              0, 100, 1);
     gtk_range_set_value(GTK_RANGE(app.mic_scale), app.cfg.mic_gain);
     g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
+    gtk_widget_set_tooltip_text(app.mic_scale,
+        "Hardware capture gain of the headset, 0 to 100%.\n"
+        "The microphone is mono in hardware: its USB descriptor declares a "
+        "single channel, so Windows receives the same stream.");
     gtk_box_pack_start(GTK_BOX(mrow), app.mic_scale, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(root), mrow, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(root),
-        labelled("<small>The headset microphone is mono in hardware: its USB "
-                 "descriptor declares a single channel, so Windows gets the "
-                 "same stream.</small>", GTK_ALIGN_START),
-        FALSE, FALSE, 0);
 
     /* --- startup --- */
     gtk_box_pack_start(GTK_BOX(root),
