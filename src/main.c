@@ -259,6 +259,39 @@ static void on_flat(GtkButton *b, gpointer data)
     set_curve(flat);
 }
 
+static void push_led(void);
+
+/* Discard everything changed since the last save and put the whole
+   interface back to what is on disk. */
+static void on_load(GtkButton *b, gpointer data)
+{
+    (void)b; (void)data;
+    bvp_config_load(&app.cfg);
+
+    app.suppress = true;
+    gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
+    for (int i = 0; i < BVP_BANDS; i++)
+        gtk_range_set_value(GTK_RANGE(app.eq_scales[i]),
+                            app.cfg.eq[app.cfg.dolby_mode][i]);
+    gtk_range_set_value(GTK_RANGE(app.preamp_scale),
+                        app.cfg.preamp[app.cfg.dolby_mode]);
+    GdkRGBA c = { app.cfg.r / 255.0, app.cfg.g / 255.0, app.cfg.b / 255.0, 1.0 };
+    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(app.color_btn), &c);
+    gtk_range_set_value(GTK_RANGE(app.bright_scale), app.cfg.brightness);
+    gtk_range_set_value(GTK_RANGE(app.mic_scale), app.cfg.mic_gain);
+    app.suppress = false;
+
+    gtk_widget_queue_draw(app.eq_area);
+    bvp_audio_set_mic_gain(app.cfg.mic_gain);
+    push_led();
+    apply_audio();
+
+    app.dirty = false;
+    gtk_widget_set_sensitive(app.save_btn, FALSE);
+    gtk_label_set_text(GTK_LABEL(app.status_label), "Saved settings restored.");
+}
+
 /* Replaying the lighting sequence takes about 0.8 s and blocks, so slider
    and colour changes are coalesced instead of firing on every step. */
 static gboolean led_timeout(gpointer data)
@@ -387,13 +420,7 @@ static void build_ui(void)
 {
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app.window), "Blackbeard VOID PRO");
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 520, 620);
-    /* Set it as the default icon for every window of the process. Going
-       through the icon *name* alone is unreliable: it only resolves once
-       the theme cache has picked the file up, which may not have happened
-       yet on the very first run. */
-    /* Set the icon on the window itself as well as process-wide: the
-       default-icon call alone left _NET_WM_ICON empty here. */
+    gtk_window_set_default_size(GTK_WINDOW(app.window), 560, 420);
     char *icon = bvp_desktop_icon_path();
     if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
         GError *ie = NULL;
@@ -411,11 +438,7 @@ static void build_ui(void)
     g_signal_connect(app.window, "delete-event",
                      G_CALLBACK(gtk_widget_hide_on_delete), NULL);
 
-    /* One notch down on the font: the window holds ten bands plus the
-       preamp side by side, and the default size makes it needlessly tall. */
     GtkCssProvider *css = gtk_css_provider_new();
-    /* The steppers on ten spin buttons side by side are what blew the
-       window up to 1354 px; trimmed down, the whole thing stays compact. */
     gtk_css_provider_load_from_data(css,
         "window { font-size: 90%; }"
         "entry { min-height: 0; min-width: 0; padding: 1px 2px; }",
@@ -425,87 +448,136 @@ static void build_ui(void)
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
 
-    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_container_set_border_width(GTK_CONTAINER(root), 12);
-    gtk_container_add(GTK_CONTAINER(app.window), root);
+    GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(outer), 10);
+    gtk_container_add(GTK_CONTAINER(app.window), outer);
 
-    app.status_label = labelled("<b>Looking for the dongle\xe2\x80\xa6</b>", GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(root), app.status_label, FALSE, FALSE, 0);
+    app.status_label = labelled("<b>Looking for the dongle\xe2\x80\xa6</b>",
+                                GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(outer), app.status_label, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(root),
-                       gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 0);
+    /* Four quadrants, separated by rules:
+         1  method            |  2  startup
+         3  Dolby + equaliser |  4  lighting and microphone            */
+    GtkWidget *grid = gtk_grid_new();
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
+    gtk_box_pack_start(GTK_BOX(outer), grid, TRUE, TRUE, 0);
 
-    /* --- Dolby --- */
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    GtkWidget *dl  = labelled("<big><b>Dolby (virtual surround)</b></big>",
-                              GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(row), dl, TRUE, TRUE, 0);
-    app.dolby_switch = gtk_switch_new();
-    gtk_widget_set_tooltip_text(app.dolby_switch,
-        "Virtual surround: reproduces, by convolution, the processing "
-        "Windows applies host-side.");
-    gtk_widget_set_valign(app.dolby_switch, GTK_ALIGN_CENTER);
-    g_signal_connect(app.dolby_switch, "notify::active", G_CALLBACK(on_dolby), NULL);
-    gtk_box_pack_start(GTK_BOX(row), app.dolby_switch, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root), row, FALSE, FALSE, 0);
+    GtkWidget *z1 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    GtkWidget *z2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    GtkWidget *z3 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    GtkWidget *z4 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_grid_attach(GTK_GRID(grid), z1, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_VERTICAL),
+                    1, 0, 1, 3);
+    gtk_grid_attach(GTK_GRID(grid), z2, 2, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
+                    0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
+                    2, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), z3, 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), z4, 2, 2, 1, 1);
+    gtk_widget_set_hexpand(z3, TRUE);
 
-    GtkWidget *mrow2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_box_pack_start(GTK_BOX(mrow2), gtk_label_new("Method"), FALSE, FALSE, 0);
+    /* ---- 1 : which method ---- */
+    gtk_box_pack_start(GTK_BOX(z1),
+                       labelled("<b>Method</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
     app.mode_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Convolution 1.0 (single measurement)");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Convolution 2.0 (averaged, band-limited)");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
-    g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
     gtk_widget_set_tooltip_text(app.mode_combo,
         "Both replay impulse responses measured on the hardware.\n"
-        "2.0 averages several sweeps, drops the deconvolution "
-        "regularisation now that the noise floor is lower, keeps only the "
-        "swept 20 Hz - 20 kHz band, and stops truncating the reverb tail.");
-    gtk_box_pack_start(GTK_BOX(mrow2), app.mode_combo, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(root), mrow2, FALSE, FALSE, 0);
+        "2.0 averages several sweeps, drops the deconvolution regularisation "
+        "now that the noise floor is lower, keeps only the swept "
+        "20 Hz - 20 kHz band, and stops truncating the reverb tail.");
+    g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
+    gtk_box_pack_start(GTK_BOX(z1), app.mode_combo, FALSE, FALSE, 0);
 
-    /* --- equaliser --- */
-    gtk_box_pack_start(GTK_BOX(root),
-                       gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root),
-                       labelled("<big><b>Equaliser</b></big>", GTK_ALIGN_START),
-                       FALSE, FALSE, 0);
+    /* ---- 2 : startup and settings ---- */
+    gtk_box_pack_start(GTK_BOX(z2),
+                       labelled("<b>Startup</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
+    app.autostart_check =
+        gtk_check_button_new_with_label("Start when I log in");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.autostart_check),
+                                 bvp_desktop_autostart_enabled());
+    g_signal_connect(app.autostart_check, "toggled",
+                     G_CALLBACK(on_autostart), NULL);
+    gtk_box_pack_start(GTK_BOX(z2), app.autostart_check, FALSE, FALSE, 0);
+
+    app.headless_check =
+        gtk_check_button_new_with_label("Headless (tray icon only)");
+    gtk_widget_set_tooltip_text(app.headless_check,
+        "Start hidden. The tray icon is still there; use its Open entry to "
+        "bring the window back.");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.headless_check),
+                                 app.cfg.headless);
+    g_signal_connect(app.headless_check, "toggled",
+                     G_CALLBACK(on_headless), NULL);
+    gtk_box_pack_start(GTK_BOX(z2), app.headless_check, FALSE, FALSE, 0);
+
+    GtkWidget *btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    app.save_btn = gtk_button_new_with_label("Save");
+    gtk_widget_set_sensitive(app.save_btn, FALSE);
+    gtk_widget_set_tooltip_text(app.save_btn, "Write the current settings to disk.");
+    g_signal_connect(app.save_btn, "clicked", G_CALLBACK(on_save), NULL);
+    gtk_box_pack_start(GTK_BOX(btns), app.save_btn, FALSE, FALSE, 0);
+
+    GtkWidget *load_btn = gtk_button_new_with_label("Load");
+    gtk_widget_set_tooltip_text(load_btn,
+        "Put every control back to the last saved settings, discarding "
+        "changes made since.");
+    g_signal_connect(load_btn, "clicked", G_CALLBACK(on_load), NULL);
+    gtk_box_pack_start(GTK_BOX(btns), load_btn, FALSE, FALSE, 0);
+
+    GtkWidget *flat_btn = gtk_button_new_with_label("Flat");
+    gtk_widget_set_tooltip_text(flat_btn, "Set every equaliser band to 0 dB.");
+    g_signal_connect(flat_btn, "clicked", G_CALLBACK(on_flat), NULL);
+    gtk_box_pack_start(GTK_BOX(btns), flat_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z2), btns, FALSE, FALSE, 4);
+
+    /* ---- 3 : Dolby switch, curve, equaliser, preamp ---- */
+    GtkWidget *drow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_pack_start(GTK_BOX(drow),
+                       labelled("<b>Dolby</b>", GTK_ALIGN_START), TRUE, TRUE, 0);
+    app.dolby_switch = gtk_switch_new();
+    gtk_widget_set_tooltip_text(app.dolby_switch,
+        "Virtual surround: reproduces, by convolution, the processing "
+        "Windows applies host-side.");
+    gtk_widget_set_valign(app.dolby_switch, GTK_ALIGN_CENTER);
+    g_signal_connect(app.dolby_switch, "notify::active",
+                     G_CALLBACK(on_dolby), NULL);
+    gtk_box_pack_start(GTK_BOX(drow), app.dolby_switch, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z3), drow, FALSE, FALSE, 0);
 
     app.eq_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(app.eq_area, -1, 105);
+    gtk_widget_set_size_request(app.eq_area, -1, 80);
     g_signal_connect(app.eq_area, "draw", G_CALLBACK(on_eq_draw), NULL);
-    gtk_box_pack_start(GTK_BOX(root), app.eq_area, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z3), app.eq_area, FALSE, FALSE, 0);
 
     GtkWidget *bands = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     gtk_box_set_homogeneous(GTK_BOX(bands), TRUE);
     for (int i = 0; i < BVP_BANDS; i++) {
         GtkWidget *col = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-
-        /* The slider and the entry share one adjustment, so they stay in
-           sync both ways for free, and the range is enforced whether the
-           value is dragged or typed. */
         GtkAdjustment *adj = gtk_adjustment_new(
             app.cfg.eq[app.cfg.dolby_mode][i], -12.0, 12.0, 0.5, 1.0, 0.0);
-
         char tip[160];
         g_snprintf(tip, sizeof(tip),
                    "%d Hz \xe2\x80\x94 gain in dB, between -12 and +12.\n"
                    "Type a value or use the slider; anything outside the "
                    "range is clamped.", bvp_band_freq[i]);
-        GtkWidget *spin = value_entry(adj, tip);
-        app.eq_spins[i] = spin;
-        gtk_box_pack_start(GTK_BOX(col), spin, FALSE, FALSE, 0);
+        GtkWidget *ent = value_entry(adj, tip);
+        app.eq_spins[i] = ent;
+        gtk_box_pack_start(GTK_BOX(col), ent, FALSE, FALSE, 0);
 
         GtkWidget *sc = gtk_scale_new(GTK_ORIENTATION_VERTICAL, adj);
         gtk_range_set_inverted(GTK_RANGE(sc), TRUE);
         gtk_scale_set_draw_value(GTK_SCALE(sc), FALSE);
         gtk_widget_set_size_request(sc, -1, 95);
         gtk_widget_set_tooltip_text(sc, tip);
-        /* listen on the adjustment: it fires for the slider and the entry */
         g_signal_connect(adj, "value-changed", G_CALLBACK(on_band),
                          GINT_TO_POINTER(i));
         app.eq_scales[i] = sc;
@@ -518,11 +590,9 @@ static void build_ui(void)
         gtk_box_pack_start(GTK_BOX(col), gtk_label_new(lbl), FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(bands), col, TRUE, TRUE, 0);
     }
-    /* Preamp sits alongside the bands, set apart by a separator: it acts on
-       the whole chain rather than on one band. */
+
     gtk_box_pack_start(GTK_BOX(bands),
-                       gtk_separator_new(GTK_ORIENTATION_VERTICAL),
-                       FALSE, FALSE, 6);
+                       gtk_separator_new(GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 4);
 
     GtkWidget *pcol = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     GtkAdjustment *padj = gtk_adjustment_new(
@@ -530,106 +600,71 @@ static void build_ui(void)
     const char *ptip =
         "Overall gain in dB, between -20 and +12. Type a value or drag the "
         "slider; anything outside the range is clamped.";
-
-    GtkWidget *pspin = value_entry(padj, ptip);
-    gtk_box_pack_start(GTK_BOX(pcol), pspin, FALSE, FALSE, 0);
-
+    gtk_box_pack_start(GTK_BOX(pcol), value_entry(padj, ptip), FALSE, FALSE, 0);
     app.preamp_scale = gtk_scale_new(GTK_ORIENTATION_VERTICAL, padj);
     gtk_range_set_inverted(GTK_RANGE(app.preamp_scale), TRUE);
     gtk_scale_set_draw_value(GTK_SCALE(app.preamp_scale), FALSE);
     gtk_widget_set_size_request(app.preamp_scale, -1, 95);
     gtk_widget_set_tooltip_text(app.preamp_scale, ptip);
     gtk_box_pack_start(GTK_BOX(pcol), app.preamp_scale, TRUE, TRUE, 0);
-
-    GtkWidget *plab = gtk_label_new("Pre");
-    gtk_widget_set_tooltip_text(plab, ptip);
-    gtk_box_pack_start(GTK_BOX(pcol), plab, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(pcol), gtk_label_new("Pre"), FALSE, FALSE, 0);
     g_signal_connect(padj, "value-changed", G_CALLBACK(on_preamp), NULL);
     gtk_box_pack_start(GTK_BOX(bands), pcol, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z3), bands, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(root), bands, FALSE, FALSE, 0);
+    /* ---- 4 : lighting and microphone, same vertical idiom ----
+       A grid rather than two boxes: the caption, the icon and the slider
+       line up row by row, so both columns read at the same heights as the
+       equaliser next to them. */
+    GtkWidget *side = gtk_grid_new();
+    gtk_grid_set_column_spacing(GTK_GRID(side), 10);
+    gtk_grid_set_row_spacing(GTK_GRID(side), 2);
 
+    GtkWidget *led_lbl = labelled("<b>LED</b>", GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(led_lbl, TRUE);
+    gtk_grid_attach(GTK_GRID(side), led_lbl, 0, 0, 1, 1);
 
-    GtkWidget *brow2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *btn_flat = gtk_button_new_with_label("Flatten equaliser");
-    g_signal_connect(btn_flat, "clicked", G_CALLBACK(on_flat), NULL);
-    gtk_box_pack_start(GTK_BOX(brow2), btn_flat, FALSE, FALSE, 0);
-    app.save_btn = gtk_button_new_with_label("Save settings");
-    gtk_widget_set_sensitive(app.save_btn, FALSE);
-    g_signal_connect(app.save_btn, "clicked", G_CALLBACK(on_save), NULL);
-    gtk_box_pack_start(GTK_BOX(brow2), app.save_btn, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root), brow2, FALSE, FALSE, 0);
-
-    /* --- lighting --- */
-    gtk_box_pack_start(GTK_BOX(root),
-                       gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root),
-                       labelled("<big><b>Lighting</b></big>", GTK_ALIGN_START),
-                       FALSE, FALSE, 0);
-
-    GtkWidget *crow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_box_pack_start(GTK_BOX(crow), gtk_label_new("Colour"), FALSE, FALSE, 0);
     GdkRGBA c = { app.cfg.r / 255.0, app.cfg.g / 255.0, app.cfg.b / 255.0, 1.0 };
     app.color_btn = gtk_color_button_new_with_rgba(&c);
+    gtk_widget_set_tooltip_text(app.color_btn, "Colour of the headset lighting.");
+    gtk_widget_set_halign(app.color_btn, GTK_ALIGN_CENTER);
     g_signal_connect(app.color_btn, "color-set", G_CALLBACK(on_color), NULL);
-    gtk_box_pack_start(GTK_BOX(crow), app.color_btn, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root), crow, FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(side), app.color_btn, 0, 1, 1, 1);
 
-    GtkWidget *brow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_box_pack_start(GTK_BOX(brow), gtk_label_new("Brightness"), FALSE, FALSE, 0);
-    app.bright_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
+    app.bright_scale = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL,
                                                 0, 255, 1);
+    gtk_range_set_inverted(GTK_RANGE(app.bright_scale), TRUE);
+    gtk_scale_set_draw_value(GTK_SCALE(app.bright_scale), FALSE);
+    gtk_widget_set_vexpand(app.bright_scale, TRUE);
     gtk_range_set_value(GTK_RANGE(app.bright_scale), app.cfg.brightness);
+    gtk_widget_set_tooltip_text(app.bright_scale,
+                                "Lighting brightness, 0 to 255.");
     g_signal_connect(app.bright_scale, "value-changed",
                      G_CALLBACK(on_bright), NULL);
-    gtk_box_pack_start(GTK_BOX(brow), app.bright_scale, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(root), brow, FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(side), app.bright_scale, 0, 2, 1, 1);
 
-    /* --- microphone --- */
-    gtk_box_pack_start(GTK_BOX(root),
-                       gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root),
-                       labelled("<big><b>Microphone</b></big>", GTK_ALIGN_START),
-                       FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(side),
+                    gtk_separator_new(GTK_ORIENTATION_VERTICAL), 1, 0, 1, 3);
 
-    GtkWidget *mrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_box_pack_start(GTK_BOX(mrow), gtk_label_new("Gain"), FALSE, FALSE, 0);
-    app.mic_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
-                                             0, 100, 1);
+    GtkWidget *mic_icon = gtk_image_new_from_icon_name(
+        "audio-input-microphone-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    gtk_widget_set_tooltip_text(mic_icon, "Headset microphone.");
+    gtk_grid_attach(GTK_GRID(side), mic_icon, 2, 1, 1, 1);
+
+    app.mic_scale = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 100, 1);
+    gtk_range_set_inverted(GTK_RANGE(app.mic_scale), TRUE);
+    gtk_scale_set_draw_value(GTK_SCALE(app.mic_scale), FALSE);
+    gtk_widget_set_vexpand(app.mic_scale, TRUE);
+    gtk_widget_set_hexpand(app.mic_scale, TRUE);
     gtk_range_set_value(GTK_RANGE(app.mic_scale), app.cfg.mic_gain);
-    g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
     gtk_widget_set_tooltip_text(app.mic_scale,
         "Hardware capture gain of the headset, 0 to 100%.\n"
         "The microphone is mono in hardware: its USB descriptor declares a "
         "single channel, so Windows receives the same stream.");
-    gtk_box_pack_start(GTK_BOX(mrow), app.mic_scale, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(root), mrow, FALSE, FALSE, 0);
+    g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
+    gtk_grid_attach(GTK_GRID(side), app.mic_scale, 2, 2, 1, 1);
 
-    /* --- startup --- */
-    gtk_box_pack_start(GTK_BOX(root),
-                       gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                       FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root),
-                       labelled("<big><b>Startup</b></big>", GTK_ALIGN_START),
-                       FALSE, FALSE, 0);
-
-    app.autostart_check =
-        gtk_check_button_new_with_label("Start automatically when I log in");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.autostart_check),
-                                 bvp_desktop_autostart_enabled());
-    g_signal_connect(app.autostart_check, "toggled",
-                     G_CALLBACK(on_autostart), NULL);
-    gtk_box_pack_start(GTK_BOX(root), app.autostart_check, FALSE, FALSE, 0);
-
-    app.headless_check =
-        gtk_check_button_new_with_label("Headless: start hidden, tray icon only");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.headless_check),
-                                 app.cfg.headless);
-    g_signal_connect(app.headless_check, "toggled",
-                     G_CALLBACK(on_headless), NULL);
-    gtk_box_pack_start(GTK_BOX(root), app.headless_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(z4), side, TRUE, TRUE, 0);
 }
 
 /* Leaving the filter chain behind would show up as a ghost sink, so quit
