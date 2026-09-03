@@ -422,7 +422,7 @@ static GtkWidget *labelled(const char *markup, GtkAlign align)
 static GtkWidget *small_check(const char *text)
 {
     GtkWidget *b = gtk_check_button_new_with_label(text);
-    char *m = g_markup_printf_escaped("<span size='x-small'>%s</span>", text);
+    char *m = g_markup_printf_escaped("<small>%s</small>", text);
     gtk_label_set_markup(GTK_LABEL(gtk_bin_get_child(GTK_BIN(b))), m);
     g_free(m);
     return b;
