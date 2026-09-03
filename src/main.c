@@ -17,6 +17,17 @@
 #include "device.h"
 #include "tray.h"
 
+/* Convolution 3.0 measures better than 2.0 against the captures -- half
+   the residual error on material it has never seen -- and 2.0 is still
+   the one that sounds right. Listening wins, so 3.0 is not offered. The
+   filters, the audio path and the tests all stay: raise this to 3 to put
+   it back in the list. */
+#define BVP_MODES_OFFERED 2
+
+static const char *mode_names[BVP_MODES] = {
+    "Convolution 1.0", "Convolution 2.0", "Convolution 3.0"
+};
+
 typedef struct {
     bvp_config  cfg;
     GtkWidget  *window;
@@ -47,6 +58,14 @@ typedef struct {
 } App;
 
 static App app;
+
+/* A settings file written when a method was still offered must not leave
+   the combo pointing at an entry that is no longer there. */
+static void clamp_mode(void)
+{
+    if (app.cfg.dolby_mode < 0 || app.cfg.dolby_mode >= BVP_MODES_OFFERED)
+        app.cfg.dolby_mode = BVP_MODES_OFFERED - 1;
+}
 
 /* ---------- audio ---------- */
 
@@ -362,6 +381,7 @@ static void on_load(GtkButton *b, gpointer data)
 {
     (void)b; (void)data;
     bvp_config_load(&app.cfg);
+    clamp_mode();
 
     app.suppress = true;
     gtk_switch_set_active(GTK_SWITCH(app.dolby_switch), app.cfg.dolby);
@@ -598,12 +618,9 @@ static void build_ui(void)
     app.mode_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
         "Normal (no processing)");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
-        "Convolution 1.0");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
-        "Convolution 2.0");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
-        "Convolution 3.0");
+    for (int m = 0; m < BVP_MODES_OFFERED; m++)
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+                                       mode_names[m]);
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo),
                              app.cfg.dolby ? app.cfg.dolby_mode + 1 : 0);
     gtk_widget_set_tooltip_text(app.mode_combo,
@@ -612,10 +629,7 @@ static void build_ui(void)
         "1.0 comes from a single measurement.\n"
         "2.0 averages several sweeps, drops the deconvolution regularisation "
         "now that the noise floor is lower, keeps only the swept "
-        "20 Hz - 20 kHz band, and stops truncating the reverb tail.\n"
-        "3.0 is identified from real programme material -- music, rain, "
-        "gunfire, crowds -- by least squares against what Windows actually "
-        "sent over USB, rather than from sweeps alone.");
+        "20 Hz - 20 kHz band, and stops truncating the reverb tail.");
     g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
     gtk_box_pack_start(GTK_BOX(z1), app.mode_combo, FALSE, FALSE, 0);
 
@@ -895,6 +909,7 @@ int main(int argc, char **argv)
     setlocale(LC_NUMERIC, "C");
 
     bvp_config_load(&app.cfg);
+    clamp_mode();
     bvp_desktop_install();
     bvp_audio_cleanup_stale();
 

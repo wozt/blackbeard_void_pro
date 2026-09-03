@@ -5,7 +5,7 @@ iCUE, no Windows VM, no Wine.
 
 | Feature | Notes |
 |---|---|
-| Virtual surround ("Dolby") | Reproduced by convolution from measurements of the real USB stream; three generations to pick from |
+| Virtual surround ("Dolby") | Reproduced by convolution from measurements of the real USB stream; two generations to pick from |
 | 10-band equaliser + preamp | With a live curve display |
 | Battery level and charge state | Read over HID, matches iCUE's reading |
 | LED colour and brightness | Full lighting protocol |
@@ -44,6 +44,9 @@ generations. The first two come from sweeps. The third is identified from
 real programme material — music, rain, gunfire, crowds, sixteen clips — by
 least squares against what Windows actually sent over USB, and on a clip
 it has never seen it leaves 5.6 dB less error than the sweep-derived ones.
+It is nonetheless **not offered in the interface**: 2.0 is the one that
+sounds right, and listening wins over the residual. The filters, the audio
+path and the tests stay; `BVP_MODES_OFFERED` in `src/main.c` puts it back.
 
 That last campaign also showed where the copy stops: the processing is
 reproducible, level-independent and stable in time, yet the best linear
@@ -61,7 +64,7 @@ channel, so Windows receives the same stream.
 src/          the application (C, GTK 3, hidapi)
 filters/v1/   measured impulse responses, first generation (one sweep)
 filters/v2/   second generation: several sweeps averaged, band-limited
-filters/v3/   third: identified from real programme material
+filters/v3/   third: identified from programme material, not offered in the UI
 tests/        test battery -- `make test`
 install.sh    interactive installer
 ```
