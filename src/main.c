@@ -422,7 +422,7 @@ static GtkWidget *labelled(const char *markup, GtkAlign align)
 static GtkWidget *small_check(const char *text)
 {
     GtkWidget *b = gtk_check_button_new_with_label(text);
-    char *m = g_markup_printf_escaped("<small>%s</small>", text);
+    char *m = g_markup_printf_escaped("<span size='x-small'>%s</span>", text);
     gtk_label_set_markup(GTK_LABEL(gtk_bin_get_child(GTK_BIN(b))), m);
     g_free(m);
     return b;
@@ -541,7 +541,7 @@ static void build_ui(void)
                      G_CALLBACK(on_autostart), NULL);
     gtk_box_pack_start(GTK_BOX(z2), app.autostart_check, FALSE, FALSE, 0);
 
-    app.headless_check = small_check("Headless (tray only)");
+    app.headless_check = small_check("Headless");
     gtk_widget_set_tooltip_text(app.headless_check,
         "Start hidden. The tray icon is still there; use its Open entry to "
         "bring the window back.");
