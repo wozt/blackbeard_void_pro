@@ -535,7 +535,9 @@ static void build_ui(void)
 {
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app.window), "Blackbeard VOID PRO");
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 560, 420);
+    /* -1: let the content decide the height, otherwise the window keeps a
+       band of nothing under the equaliser. */
+    gtk_window_set_default_size(GTK_WINDOW(app.window), 560, -1);
     char *icon = bvp_desktop_icon_path();
     if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
         GError *ie = NULL;
@@ -728,6 +730,7 @@ static void build_ui(void)
     /* hug the left edge: the column is as wide as the startup checkboxes
        above it, and centring would leave the two bars floating in it */
     gtk_widget_set_halign(side, GTK_ALIGN_START);
+    gtk_widget_set_valign(side, GTK_ALIGN_START);
 
     GtkWidget *led_lbl = labelled("<b>LED</b>", GTK_ALIGN_CENTER);
     gtk_grid_attach(GTK_GRID(side), led_lbl, 0, 0, 1, 1);
@@ -744,7 +747,7 @@ static void build_ui(void)
                                                 0, 255, 1);
     gtk_range_set_inverted(GTK_RANGE(app.bright_scale), TRUE);
     gtk_scale_set_draw_value(GTK_SCALE(app.bright_scale), FALSE);
-    gtk_widget_set_vexpand(app.bright_scale, TRUE);
+    gtk_widget_set_size_request(app.bright_scale, -1, 95);
     gtk_range_set_value(GTK_RANGE(app.bright_scale), app.cfg.brightness);
     gtk_widget_set_tooltip_text(app.bright_scale,
                                 "Lighting brightness, 0 to 255.");
@@ -767,7 +770,7 @@ static void build_ui(void)
     app.mic_scale = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 100, 1);
     gtk_range_set_inverted(GTK_RANGE(app.mic_scale), TRUE);
     gtk_scale_set_draw_value(GTK_SCALE(app.mic_scale), FALSE);
-    gtk_widget_set_vexpand(app.mic_scale, TRUE);
+    gtk_widget_set_size_request(app.mic_scale, -1, 95);
     gtk_range_set_value(GTK_RANGE(app.mic_scale), app.cfg.mic_gain);
     gtk_widget_set_tooltip_text(app.mic_scale,
         "Hardware capture gain of the headset, 0 to 100%.\n"
@@ -789,8 +792,7 @@ static void build_ui(void)
 
     app.batt_percent = -1;
     app.batt_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(app.batt_area, 12, -1);
-    gtk_widget_set_vexpand(app.batt_area, TRUE);
+    gtk_widget_set_size_request(app.batt_area, 12, 95);
     gtk_widget_set_halign(app.batt_area, GTK_ALIGN_CENTER);
     g_signal_connect(app.batt_area, "draw", G_CALLBACK(on_batt_draw), NULL);
     gtk_grid_attach(GTK_GRID(side), app.batt_area, 4, 1, 1, 2);
