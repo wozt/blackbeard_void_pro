@@ -17,14 +17,21 @@ $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(BIN)
+	rm -f $(OBJ) $(BIN) tests/chain_probe
 
 install: $(BIN)
 	install -Dm755 $(BIN) $(PREFIX)/bin/$(BIN)
-	install -Dm644 filters/ir_LL.wav $(PREFIX)/share/blackbeard_void_pro/filters/ir_LL.wav
-	install -Dm644 filters/ir_LR.wav $(PREFIX)/share/blackbeard_void_pro/filters/ir_LR.wav
-	install -Dm644 filters/ir_RL.wav $(PREFIX)/share/blackbeard_void_pro/filters/ir_RL.wav
-	install -Dm644 filters/ir_RR.wav $(PREFIX)/share/blackbeard_void_pro/filters/ir_RR.wav
+	for v in v1 v2; do \
+	  for f in filters/$$v/*.wav; do \
+	    install -Dm644 "$$f" $(PREFIX)/share/blackbeard_void_pro/filters/$$v/$$(basename $$f); \
+	  done; \
+	done
 	@echo "Installed. The icon and menu entry are published on first run."
 
-.PHONY: all clean install
+tests/chain_probe: tests/chain_probe.c src/audio.c src/config.c
+	$(CC) -Isrc $(CFLAGS) $^ -o $@ $(LDLIBS)
+
+test: $(BIN) tests/chain_probe
+	./tests/run_tests.sh
+
+.PHONY: all clean install test

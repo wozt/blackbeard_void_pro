@@ -10,8 +10,11 @@
 
 typedef struct {
     bool    dolby;                  /* spatialisation enabled */
-    double  eq[BVP_BANDS];          /* gains in dB, -12..+12 */
-    double  preamp;                 /* dB */
+    int     dolby_mode;             /* 0 = convolution, 1 = algorithmic */
+    /* One equaliser and preamp per Dolby method: the two colour the sound
+       differently, so a setting tuned for one is wrong for the other. */
+    double  eq[2][BVP_BANDS];       /* gains in dB, -12..+12 */
+    double  preamp[2];              /* dB */
     uint8_t r, g, b;                /* LED colour */
     uint8_t brightness;             /* 0-255 */
     uint8_t mic_gain;               /* 0-255 */

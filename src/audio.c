@@ -23,6 +23,12 @@ bool bvp_audio_active(void) { return chain_pid != 0; }
 
 char *bvp_audio_find_sink(void)
 {
+    /* Test hook: lets the battery route the chain into a null sink so the
+       output can be measured without playing anything into the headset. */
+    const char *forced = g_getenv("BVP_TARGET_SINK");
+    if (forced && *forced)
+        return g_strdup(forced);
+
     char *out = NULL;
     if (!g_spawn_command_line_sync("pactl list sinks short", &out, NULL, NULL, NULL))
         return NULL;
@@ -146,13 +152,35 @@ static void set_default_sink(const char *name)
     g_free(out);
 }
 
+/* Two measurement generations live side by side, so the two can be
+   compared by ear:
+     v1 -- single sweep, deconvolution regularised at 1e-3, tail faded
+           from tap 2800
+     v2 -- several sweeps averaged after aligning on the direct peak,
+           regularisation lowered to 2e-4 now that the noise floor is
+           lower, response band-limited to the swept 20 Hz - 20 kHz, and
+           the fade pushed to 3400 so the reverb tail is no longer cut */
+static char *version_dir(const bvp_config *cfg)
+{
+    const char *v = (cfg && cfg->dolby_mode == 1) ? "v2" : "v1";
+    char *p = g_build_filename(filter_dir, v, NULL);
+    if (g_file_test(p, G_FILE_TEST_IS_DIR))
+        return p;
+    g_free(p);
+    return g_strdup(filter_dir);      /* flat layout: older installs */
+}
+
 static bool filters_present(void)
 {
     if (!filter_dir)
         return false;
     static const char *n[] = { "ir_LL.wav", "ir_LR.wav", "ir_RL.wav", "ir_RR.wav" };
     for (int i = 0; i < 4; i++) {
-        char *p = g_build_filename(filter_dir, n[i], NULL);
+        char *p = g_build_filename(filter_dir, "v1", n[i], NULL);
+        if (!g_file_test(p, G_FILE_TEST_EXISTS)) {
+            g_free(p);
+            p = g_build_filename(filter_dir, n[i], NULL);
+        }
         bool ok = g_file_test(p, G_FILE_TEST_EXISTS);
         g_free(p);
         if (!ok) return false;
@@ -177,9 +205,10 @@ static char *build_graph(const bvp_config *cfg, const char *target, bool use_ir)
     if (use_ir) {
         static const char *k[4] = { "LL", "LR", "RL", "RR" };
         for (int i = 0; i < 4; i++) {
+            char *vd = version_dir(cfg);
             char *fn = g_strdup_printf("ir_%s.wav", k[i]);
-            char *p  = g_build_filename(filter_dir, fn, NULL);
-            g_free(fn);
+            char *p  = g_build_filename(vd, fn, NULL);
+            g_free(fn); g_free(vd);
             g_string_append_printf(nodes,
                 "{ type = builtin name = c%s label = convolver "
                 "config = { filename = \"%s\" } } ", k[i], p);
@@ -200,7 +229,8 @@ static char *build_graph(const bvp_config *cfg, const char *target, bool use_ir)
         headR = "mixR:Out";
     }
 
-    double mult = pow(10.0, cfg->preamp / 20.0);
+    int md = (cfg->dolby_mode == 1) ? 1 : 0;
+    double mult = pow(10.0, cfg->preamp[md] / 20.0);
     char tailL[32], tailR[32];
     const char *sides[2] = { "L", "R" };
     const char *heads[2] = { headL, headR };
@@ -221,7 +251,7 @@ static char *build_graph(const bvp_config *cfg, const char *target, bool use_ir)
             g_string_append_printf(nodes,
                 "{ type = builtin name = %s label = bq_peaking "
                 "control = { \"Freq\" = %d \"Q\" = 1.2 \"Gain\" = %.2f } } ",
-                name, bvp_band_freq[i], cfg->eq[i]);
+                name, bvp_band_freq[i], cfg->eq[md][i]);
             g_string_append_printf(links, "{ output = \"%s\" input = \"%s:In\" } ",
                                    prev, name);
             g_snprintf(prev, sizeof(prev), "%s:Out", name);

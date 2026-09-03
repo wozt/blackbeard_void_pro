@@ -5,7 +5,7 @@ iCUE, no Windows VM, no Wine.
 
 | Feature | Notes |
 |---|---|
-| Virtual surround ("Dolby") | Reproduced by convolution, measured to within 0.01–0.36 dB of Windows |
+| Virtual surround ("Dolby") | Reproduced by convolution, measured to within 0.01–0.36 dB of Windows; two measurement generations to pick from |
 | 10-band equaliser + preamp | With a live curve display |
 | Battery level and charge state | Read over HID, matches iCUE's reading |
 | LED colour and brightness | Full lighting protocol |
@@ -48,10 +48,18 @@ channel, so Windows receives the same stream.
 ## Layout
 
 ```
-src/         the application (C, GTK 3, hidapi)
-filters/     measured impulse responses
-install.sh   interactive installer
+src/          the application (C, GTK 3, hidapi)
+filters/v1/   measured impulse responses, first generation
+filters/v2/   second generation: several sweeps averaged, band-limited
+tests/        test battery -- `make test`
+install.sh    interactive installer
 ```
+
+`make test` checks the build, the HID link (battery reading), that both
+convolution generations actually output sound, the settings file, the
+desktop integration, single-instance behaviour and that no ghost sink is
+left after a `kill -9`. Audio tests route the chain into a null sink, so
+nothing is played into the headset.
 
 ## Settings
 

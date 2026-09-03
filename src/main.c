@@ -22,6 +22,9 @@ typedef struct {
     GtkWidget  *window;
     GtkWidget  *status_label;
     GtkWidget  *dolby_switch;
+    GtkWidget  *mode_combo;
+    GtkWidget  *save_btn;
+    bool        dirty;
     GtkWidget  *eq_area;
     GtkWidget  *eq_scales[BVP_BANDS];
     GtkWidget  *preamp_scale;
@@ -53,14 +56,30 @@ static void apply_audio(void)
     } else {
         bvp_audio_stop();
     }
-    bvp_config_save(&app.cfg);
+}
+
+static void mark_dirty(void)
+{
+    app.dirty = true;
+    if (app.save_btn)
+        gtk_widget_set_sensitive(app.save_btn, TRUE);
 }
 
 static gboolean eq_timeout(gpointer data)
 {
+    (void)data;
     app.eq_timer = 0;
-    apply_audio();
+    apply_audio();          /* heard immediately; saved only on request */
     return G_SOURCE_REMOVE;
+}
+
+static void on_save(GtkButton *b, gpointer data)
+{
+    (void)b; (void)data;
+    bvp_config_save(&app.cfg);
+    app.dirty = false;
+    gtk_widget_set_sensitive(app.save_btn, FALSE);
+    gtk_label_set_text(GTK_LABEL(app.status_label), "Settings saved.");
 }
 
 /* Coalesce slider movement: reloading the chain on every pixel would
@@ -96,7 +115,7 @@ static gboolean on_eq_draw(GtkWidget *w, cairo_t *cr, gpointer data)
     double xs[BVP_BANDS], ys[BVP_BANDS];
     for (int i = 0; i < BVP_BANDS; i++) {
         xs[i] = pad + i * (width - 2 * pad) / (double)(BVP_BANDS - 1);
-        ys[i] = pad + (span - app.cfg.eq[i]) / (2 * span) * (height - 2 * pad);
+        ys[i] = pad + (span - app.cfg.eq[app.cfg.dolby_mode][i]) / (2 * span) * (height - 2 * pad);
     }
 
     cairo_set_source_rgba(cr, 0.98, 0.75, 0.05, 0.95);
@@ -124,19 +143,42 @@ static void on_dolby(GtkSwitch *sw, GParamSpec *ps, gpointer data)
     apply_audio();
 }
 
+static void on_mode(GtkComboBox *c, gpointer data)
+{
+    (void)data;
+    if (app.suppress) return;
+    app.cfg.dolby_mode = gtk_combo_box_get_active(c);
+
+    /* each method keeps its own curve: show the one that belongs to the
+       method we just switched to */
+    app.suppress = true;
+    for (int i = 0; i < BVP_BANDS; i++)
+        gtk_range_set_value(GTK_RANGE(app.eq_scales[i]),
+                            app.cfg.eq[app.cfg.dolby_mode][i]);
+    gtk_range_set_value(GTK_RANGE(app.preamp_scale),
+                        app.cfg.preamp[app.cfg.dolby_mode]);
+    app.suppress = false;
+    gtk_widget_queue_draw(app.eq_area);
+
+    mark_dirty();
+    apply_audio();
+}
+
 static void on_band(GtkRange *r, gpointer data)
 {
     if (app.suppress) return;
     int i = GPOINTER_TO_INT(data);
-    app.cfg.eq[i] = gtk_range_get_value(r);
+    app.cfg.eq[app.cfg.dolby_mode][i] = gtk_range_get_value(r);
     gtk_widget_queue_draw(app.eq_area);
+    mark_dirty();
     schedule_audio();
 }
 
 static void on_preamp(GtkRange *r, gpointer data)
 {
     if (app.suppress) return;
-    app.cfg.preamp = gtk_range_get_value(r);
+    app.cfg.preamp[app.cfg.dolby_mode] = gtk_range_get_value(r);
+    mark_dirty();
     schedule_audio();
 }
 
@@ -144,11 +186,12 @@ static void set_curve(const double *v)
 {
     app.suppress = true;
     for (int i = 0; i < BVP_BANDS; i++) {
-        app.cfg.eq[i] = v[i];
+        app.cfg.eq[app.cfg.dolby_mode][i] = v[i];
         gtk_range_set_value(GTK_RANGE(app.eq_scales[i]), v[i]);
     }
     app.suppress = false;
     gtk_widget_queue_draw(app.eq_area);
+    mark_dirty();
     schedule_audio();
 }
 
@@ -165,7 +208,7 @@ static gboolean led_timeout(gpointer data)
     (void)data;
     app.led_timer = 0;
     bvp_device_set_lighting(app.cfg.r, app.cfg.g, app.cfg.b, app.cfg.brightness);
-    bvp_config_save(&app.cfg);
+    mark_dirty();
     return G_SOURCE_REMOVE;
 }
 
@@ -193,7 +236,7 @@ static void on_mic(GtkRange *r, gpointer data)
     if (app.suppress) return;
     app.cfg.mic_gain = (uint8_t)gtk_range_get_value(r);
     bvp_audio_set_mic_gain(app.cfg.mic_gain);
-    bvp_config_save(&app.cfg);
+    mark_dirty();
 }
 
 static void on_autostart(GtkToggleButton *b, gpointer data)
@@ -206,7 +249,7 @@ static void on_headless(GtkToggleButton *b, gpointer data)
 {
     (void)data;
     app.cfg.headless = gtk_toggle_button_get_active(b);
-    bvp_config_save(&app.cfg);
+    mark_dirty();
     /* keep the autostart entry in sync so the choice actually applies at
        the next login */
     if (bvp_desktop_autostart_enabled())
@@ -327,9 +370,24 @@ static void build_ui(void)
     gtk_box_pack_start(GTK_BOX(row), app.dolby_switch, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), row, FALSE, FALSE, 0);
 
+    GtkWidget *mrow2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_box_pack_start(GTK_BOX(mrow2), gtk_label_new("Method"), FALSE, FALSE, 0);
+    app.mode_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+        "Convolution 1.0 (single measurement)");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+        "Convolution 2.0 (averaged, band-limited)");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), app.cfg.dolby_mode);
+    g_signal_connect(app.mode_combo, "changed", G_CALLBACK(on_mode), NULL);
+    gtk_box_pack_start(GTK_BOX(mrow2), app.mode_combo, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(root), mrow2, FALSE, FALSE, 0);
+
     gtk_box_pack_start(GTK_BOX(root),
-        labelled("<small>Reproduces, by convolution, the processing Windows "
-                 "applies host-side.</small>", GTK_ALIGN_START),
+        labelled("<small>Both replay impulse responses measured on the hardware. "
+                 "2.0 averages several sweeps, drops the deconvolution "
+                 "regularisation now that the noise floor is lower, keeps only "
+                 "the swept 20 Hz - 20 kHz band, and stops truncating the "
+                 "reverb tail.</small>", GTK_ALIGN_START),
         FALSE, FALSE, 0);
 
     /* --- equaliser --- */
@@ -354,7 +412,7 @@ static void build_ui(void)
         gtk_range_set_inverted(GTK_RANGE(sc), TRUE);
         gtk_scale_set_draw_value(GTK_SCALE(sc), FALSE);
         gtk_widget_set_size_request(sc, -1, 130);
-        gtk_range_set_value(GTK_RANGE(sc), app.cfg.eq[i]);
+        gtk_range_set_value(GTK_RANGE(sc), app.cfg.eq[app.cfg.dolby_mode][i]);
         g_signal_connect(sc, "value-changed", G_CALLBACK(on_band),
                          GINT_TO_POINTER(i));
         app.eq_scales[i] = sc;
@@ -373,16 +431,21 @@ static void build_ui(void)
     gtk_box_pack_start(GTK_BOX(prow), gtk_label_new("Preamp"), FALSE, FALSE, 0);
     app.preamp_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
                                                 -20, 12, 0.5);
-    gtk_range_set_value(GTK_RANGE(app.preamp_scale), app.cfg.preamp);
+    gtk_range_set_value(GTK_RANGE(app.preamp_scale), app.cfg.preamp[app.cfg.dolby_mode]);
     g_signal_connect(app.preamp_scale, "value-changed",
                      G_CALLBACK(on_preamp), NULL);
     gtk_box_pack_start(GTK_BOX(prow), app.preamp_scale, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(root), prow, FALSE, FALSE, 0);
 
+    GtkWidget *brow2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *btn_flat = gtk_button_new_with_label("Flatten equaliser");
     g_signal_connect(btn_flat, "clicked", G_CALLBACK(on_flat), NULL);
-    gtk_widget_set_halign(btn_flat, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(root), btn_flat, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(brow2), btn_flat, FALSE, FALSE, 0);
+    app.save_btn = gtk_button_new_with_label("Save settings");
+    gtk_widget_set_sensitive(app.save_btn, FALSE);
+    g_signal_connect(app.save_btn, "clicked", G_CALLBACK(on_save), NULL);
+    gtk_box_pack_start(GTK_BOX(brow2), app.save_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(root), brow2, FALSE, FALSE, 0);
 
     /* --- lighting --- */
     gtk_box_pack_start(GTK_BOX(root),
@@ -556,10 +619,19 @@ int main(int argc, char **argv)
         NULL
     };
     for (int i = 0; candidates[i]; i++) {
-        char *probe = g_build_filename(candidates[i], "ir_LL.wav", NULL);
-        if (g_file_test(probe, G_FILE_TEST_EXISTS))
-            bvp_audio_set_filter_dir(candidates[i]);
+        /* Accept either layout: the generations in v1/ and v2/, or the
+           older flat one. Probing only for a flat ir_LL.wav silently left
+           the filter directory unset once the files moved into v1/. */
+        char *probe = g_build_filename(candidates[i], "v1", "ir_LL.wav", NULL);
+        bool found = g_file_test(probe, G_FILE_TEST_EXISTS);
         g_free(probe);
+        if (!found) {
+            probe = g_build_filename(candidates[i], "ir_LL.wav", NULL);
+            found = g_file_test(probe, G_FILE_TEST_EXISTS);
+            g_free(probe);
+        }
+        if (found)
+            bvp_audio_set_filter_dir(candidates[i]);
     }
     for (int i = 0; candidates[i]; i++)
         g_free(candidates[i]);
@@ -580,6 +652,11 @@ int main(int argc, char **argv)
 
     bvp_audio_stop();
     bvp_device_close();
-    bvp_config_save(&app.cfg);
+    /* Only the instance that actually owns the UI may write the settings:
+       a second launch exits through here too, and would otherwise save the
+       state it read at startup over whatever the running instance has
+       changed since. */
+    if (ui_built)
+        bvp_config_save(&app.cfg);
     return status;
 }

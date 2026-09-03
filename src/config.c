@@ -10,11 +10,14 @@ const int bvp_band_freq[BVP_BANDS] = { 32, 64, 125, 250, 500, 1000,
 void bvp_config_defaults(bvp_config *c)
 {
     c->dolby = true;
-    for (int i = 0; i < BVP_BANDS; i++)
-        c->eq[i] = 0.0;             /* the iCUE curve is NOT replayed here:
+    c->dolby_mode = 0;
+    for (int m = 0; m < 2; m++) {
+        for (int i = 0; i < BVP_BANDS; i++)
+            c->eq[m][i] = 0.0;      /* the iCUE curve is NOT replayed here:
                                        the convolution filters were measured
                                        with the equaliser flat, see work.md */
-    c->preamp     = 0.0;
+        c->preamp[m] = 0.0;
+    }
     c->r = 0; c->g = 0; c->b = 255;
     c->brightness = 200;
     c->mic_gain   = 100;   /* percent */
@@ -49,7 +52,11 @@ void bvp_config_load(bvp_config *c)
         const char *val = g_strstrip(eq + 1);
 
         if (!strcmp(key, "dolby"))            c->dolby = atoi(val) != 0;
-        else if (!strcmp(key, "preamp"))      c->preamp = g_ascii_strtod(val, NULL);
+        else if (!strcmp(key, "dolby_mode"))  c->dolby_mode = atoi(val);
+        else if (!strcmp(key, "preamp"))      /* pre-per-mode files */
+            c->preamp[0] = c->preamp[1] = g_ascii_strtod(val, NULL);
+        else if (!strcmp(key, "preamp0"))     c->preamp[0] = g_ascii_strtod(val, NULL);
+        else if (!strcmp(key, "preamp1"))     c->preamp[1] = g_ascii_strtod(val, NULL);
         else if (!strcmp(key, "color_r"))     c->r = (uint8_t)atoi(val);
         else if (!strcmp(key, "color_g"))     c->g = (uint8_t)atoi(val);
         else if (!strcmp(key, "color_b"))     c->b = (uint8_t)atoi(val);
@@ -57,9 +64,21 @@ void bvp_config_load(bvp_config *c)
         else if (!strcmp(key, "mic_gain"))    c->mic_gain = (uint8_t)atoi(val);
         else if (!strcmp(key, "headless"))    c->headless = atoi(val) != 0;
         else if (!strncmp(key, "eq", 2)) {
-            int idx = atoi(key + 2);
-            if (idx >= 0 && idx < BVP_BANDS)
-                c->eq[idx] = g_ascii_strtod(val, NULL);
+            int mode = 0, idx = -1;
+            if (strchr(key + 2, '_') &&
+                sscanf(key + 2, "%d_%d", &mode, &idx) == 2) {
+                /* eq<mode>_<band> */
+            } else {
+                idx = atoi(key + 2);    /* older files: one shared curve */
+                mode = -1;
+            }
+            if (idx >= 0 && idx < BVP_BANDS) {
+                double v = g_ascii_strtod(val, NULL);
+                if (mode < 0)
+                    c->eq[0][idx] = c->eq[1][idx] = v;
+                else if (mode >= 0 && mode < 2)
+                    c->eq[mode][idx] = v;
+            }
         }
     }
     g_strfreev(lines);
@@ -75,14 +94,16 @@ void bvp_config_save(const bvp_config *c)
 
     GString *s = g_string_new("# blackbeard_void_pro\n");
     g_string_append_printf(s, "dolby = %d\n", c->dolby ? 1 : 0);
-    for (int i = 0; i < BVP_BANDS; i++) {
-        char buf[G_ASCII_DTOSTR_BUF_SIZE];
-        g_ascii_dtostr(buf, sizeof(buf), c->eq[i]);
-        g_string_append_printf(s, "eq%d = %s\n", i, buf);
-    }
+    g_string_append_printf(s, "dolby_mode = %d\n", c->dolby_mode);
     char buf[G_ASCII_DTOSTR_BUF_SIZE];
-    g_ascii_dtostr(buf, sizeof(buf), c->preamp);
-    g_string_append_printf(s, "preamp = %s\n", buf);
+    for (int m = 0; m < 2; m++) {
+        for (int i = 0; i < BVP_BANDS; i++) {
+            g_ascii_dtostr(buf, sizeof(buf), c->eq[m][i]);
+            g_string_append_printf(s, "eq%d_%d = %s\n", m, i, buf);
+        }
+        g_ascii_dtostr(buf, sizeof(buf), c->preamp[m]);
+        g_string_append_printf(s, "preamp%d = %s\n", m, buf);
+    }
     g_string_append_printf(s, "color_r = %u\ncolor_g = %u\ncolor_b = %u\n",
                            c->r, c->g, c->b);
     g_string_append_printf(s, "brightness = %u\n", c->brightness);
