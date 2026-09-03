@@ -27,6 +27,7 @@ typedef struct {
     bool        dirty;
     GtkWidget  *eq_area;
     GtkWidget  *eq_scales[BVP_BANDS];
+    GtkWidget  *eq_spins[BVP_BANDS];
     GtkWidget  *preamp_scale;
     GtkWidget  *color_btn;
     GtkWidget  *bright_scale;
@@ -164,20 +165,77 @@ static void on_mode(GtkComboBox *c, gpointer data)
     apply_audio();
 }
 
-static void on_band(GtkRange *r, gpointer data)
+/* A plain entry bound to an adjustment. A spin button would do the same
+   but its steppers cost a lot of width, and eleven of them side by side
+   made the window half again as wide as it needed to be. */
+static void entry_from_adj(GtkAdjustment *adj, GtkEntry *e)
+{
+    char buf[16];
+    g_snprintf(buf, sizeof(buf), "%.1f", gtk_adjustment_get_value(adj));
+    gtk_entry_set_text(e, buf);
+}
+
+static void on_adj_to_entry(GtkAdjustment *adj, gpointer data)
+{
+    entry_from_adj(adj, GTK_ENTRY(data));
+}
+
+/* Commit typed text: anything unparsable or out of range snaps back to a
+   valid value rather than being silently accepted. */
+static void commit_entry(GtkEntry *e, GtkAdjustment *adj)
+{
+    const char *txt = gtk_entry_get_text(e);
+    char *end = NULL;
+    double v = g_strtod(txt, &end);
+    if (end == txt || (end && *g_strstrip(end) != '\0')) {
+        entry_from_adj(adj, e);         /* not a number: restore */
+        return;
+    }
+    v = CLAMP(v, gtk_adjustment_get_lower(adj), gtk_adjustment_get_upper(adj));
+    gtk_adjustment_set_value(adj, v);
+    entry_from_adj(adj, e);             /* show the clamped value */
+}
+
+static void on_entry_activate(GtkEntry *e, gpointer data)
+{
+    commit_entry(e, GTK_ADJUSTMENT(data));
+}
+
+static gboolean on_entry_focus_out(GtkWidget *w, GdkEvent *ev, gpointer data)
+{
+    (void)ev;
+    commit_entry(GTK_ENTRY(w), GTK_ADJUSTMENT(data));
+    return FALSE;
+}
+
+static GtkWidget *value_entry(GtkAdjustment *adj, const char *tip)
+{
+    GtkWidget *e = gtk_entry_new();
+    gtk_entry_set_width_chars(GTK_ENTRY(e), 4);
+    gtk_entry_set_max_length(GTK_ENTRY(e), 6);
+    gtk_entry_set_alignment(GTK_ENTRY(e), 0.5);
+    gtk_widget_set_tooltip_text(e, tip);
+    entry_from_adj(adj, GTK_ENTRY(e));
+    g_signal_connect(adj, "value-changed", G_CALLBACK(on_adj_to_entry), e);
+    g_signal_connect(e, "activate", G_CALLBACK(on_entry_activate), adj);
+    g_signal_connect(e, "focus-out-event", G_CALLBACK(on_entry_focus_out), adj);
+    return e;
+}
+
+static void on_band(GtkAdjustment *adj, gpointer data)
 {
     if (app.suppress) return;
     int i = GPOINTER_TO_INT(data);
-    app.cfg.eq[app.cfg.dolby_mode][i] = gtk_range_get_value(r);
+    app.cfg.eq[app.cfg.dolby_mode][i] = gtk_adjustment_get_value(adj);
     gtk_widget_queue_draw(app.eq_area);
     mark_dirty();
     schedule_audio();
 }
 
-static void on_preamp(GtkRange *r, gpointer data)
+static void on_preamp(GtkAdjustment *adj, gpointer data)
 {
     if (app.suppress) return;
-    app.cfg.preamp[app.cfg.dolby_mode] = gtk_range_get_value(r);
+    app.cfg.preamp[app.cfg.dolby_mode] = gtk_adjustment_get_value(adj);
     mark_dirty();
     schedule_audio();
 }
@@ -317,6 +375,11 @@ static GtkWidget *labelled(const char *markup, GtkAlign align)
     GtkWidget *l = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(l), markup);
     gtk_widget_set_halign(l, align);
+    /* Without wrapping, the explanatory sentences alone decide how wide the
+       window is, and it ends up far wider than the controls need. */
+    gtk_label_set_line_wrap(GTK_LABEL(l), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(l), 58);
+    gtk_label_set_xalign(GTK_LABEL(l), 0.0);
     return l;
 }
 
@@ -324,7 +387,7 @@ static void build_ui(void)
 {
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app.window), "Blackbeard VOID PRO");
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 560, 760);
+    gtk_window_set_default_size(GTK_WINDOW(app.window), 520, 620);
     /* Set it as the default icon for every window of the process. Going
        through the icon *name* alone is unreliable: it only resolves once
        the theme cache has picked the file up, which may not have happened
@@ -348,8 +411,22 @@ static void build_ui(void)
     g_signal_connect(app.window, "delete-event",
                      G_CALLBACK(gtk_widget_hide_on_delete), NULL);
 
-    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_container_set_border_width(GTK_CONTAINER(root), 18);
+    /* One notch down on the font: the window holds ten bands plus the
+       preamp side by side, and the default size makes it needlessly tall. */
+    GtkCssProvider *css = gtk_css_provider_new();
+    /* The steppers on ten spin buttons side by side are what blew the
+       window up to 1354 px; trimmed down, the whole thing stays compact. */
+    gtk_css_provider_load_from_data(css,
+        "window { font-size: 90%; }"
+        "entry { min-height: 0; min-width: 0; padding: 1px 2px; }",
+        -1, NULL);
+    gtk_style_context_add_provider_for_screen(
+        gdk_screen_get_default(), GTK_STYLE_PROVIDER(css),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
+
+    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_container_set_border_width(GTK_CONTAINER(root), 12);
     gtk_container_add(GTK_CONTAINER(app.window), root);
 
     app.status_label = labelled("<b>Recherche du dongle…</b>", GTK_ALIGN_START);
@@ -399,7 +476,7 @@ static void build_ui(void)
                        FALSE, FALSE, 0);
 
     app.eq_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(app.eq_area, -1, 140);
+    gtk_widget_set_size_request(app.eq_area, -1, 105);
     g_signal_connect(app.eq_area, "draw", G_CALLBACK(on_eq_draw), NULL);
     gtk_box_pack_start(GTK_BOX(root), app.eq_area, FALSE, FALSE, 0);
 
@@ -407,13 +484,29 @@ static void build_ui(void)
     gtk_box_set_homogeneous(GTK_BOX(bands), TRUE);
     for (int i = 0; i < BVP_BANDS; i++) {
         GtkWidget *col = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-        GtkWidget *sc  = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL,
-                                                  -12, 12, 0.5);
+
+        /* The slider and the entry share one adjustment, so they stay in
+           sync both ways for free, and the range is enforced whether the
+           value is dragged or typed. */
+        GtkAdjustment *adj = gtk_adjustment_new(
+            app.cfg.eq[app.cfg.dolby_mode][i], -12.0, 12.0, 0.5, 1.0, 0.0);
+
+        char tip[160];
+        g_snprintf(tip, sizeof(tip),
+                   "%d Hz \xe2\x80\x94 gain in dB, between -12 and +12.\n"
+                   "Type a value or use the slider; anything outside the "
+                   "range is clamped.", bvp_band_freq[i]);
+        GtkWidget *spin = value_entry(adj, tip);
+        app.eq_spins[i] = spin;
+        gtk_box_pack_start(GTK_BOX(col), spin, FALSE, FALSE, 0);
+
+        GtkWidget *sc = gtk_scale_new(GTK_ORIENTATION_VERTICAL, adj);
         gtk_range_set_inverted(GTK_RANGE(sc), TRUE);
         gtk_scale_set_draw_value(GTK_SCALE(sc), FALSE);
-        gtk_widget_set_size_request(sc, -1, 130);
-        gtk_range_set_value(GTK_RANGE(sc), app.cfg.eq[app.cfg.dolby_mode][i]);
-        g_signal_connect(sc, "value-changed", G_CALLBACK(on_band),
+        gtk_widget_set_size_request(sc, -1, 95);
+        gtk_widget_set_tooltip_text(sc, tip);
+        /* listen on the adjustment: it fires for the slider and the entry */
+        g_signal_connect(adj, "value-changed", G_CALLBACK(on_band),
                          GINT_TO_POINTER(i));
         app.eq_scales[i] = sc;
         gtk_box_pack_start(GTK_BOX(col), sc, TRUE, TRUE, 0);
@@ -425,17 +518,37 @@ static void build_ui(void)
         gtk_box_pack_start(GTK_BOX(col), gtk_label_new(lbl), FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(bands), col, TRUE, TRUE, 0);
     }
+    /* Preamp sits alongside the bands, set apart by a separator: it acts on
+       the whole chain rather than on one band. */
+    gtk_box_pack_start(GTK_BOX(bands),
+                       gtk_separator_new(GTK_ORIENTATION_VERTICAL),
+                       FALSE, FALSE, 6);
+
+    GtkWidget *pcol = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    GtkAdjustment *padj = gtk_adjustment_new(
+        app.cfg.preamp[app.cfg.dolby_mode], -20.0, 12.0, 0.5, 1.0, 0.0);
+    const char *ptip =
+        "Overall gain in dB, between -20 and +12. Type a value or drag the "
+        "slider; anything outside the range is clamped.";
+
+    GtkWidget *pspin = value_entry(padj, ptip);
+    gtk_box_pack_start(GTK_BOX(pcol), pspin, FALSE, FALSE, 0);
+
+    app.preamp_scale = gtk_scale_new(GTK_ORIENTATION_VERTICAL, padj);
+    gtk_range_set_inverted(GTK_RANGE(app.preamp_scale), TRUE);
+    gtk_scale_set_draw_value(GTK_SCALE(app.preamp_scale), FALSE);
+    gtk_widget_set_size_request(app.preamp_scale, -1, 95);
+    gtk_widget_set_tooltip_text(app.preamp_scale, ptip);
+    gtk_box_pack_start(GTK_BOX(pcol), app.preamp_scale, TRUE, TRUE, 0);
+
+    GtkWidget *plab = gtk_label_new("Pre");
+    gtk_widget_set_tooltip_text(plab, ptip);
+    gtk_box_pack_start(GTK_BOX(pcol), plab, FALSE, FALSE, 0);
+    g_signal_connect(padj, "value-changed", G_CALLBACK(on_preamp), NULL);
+    gtk_box_pack_start(GTK_BOX(bands), pcol, FALSE, FALSE, 0);
+
     gtk_box_pack_start(GTK_BOX(root), bands, FALSE, FALSE, 0);
 
-    GtkWidget *prow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_box_pack_start(GTK_BOX(prow), gtk_label_new("Preamp"), FALSE, FALSE, 0);
-    app.preamp_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
-                                                -20, 12, 0.5);
-    gtk_range_set_value(GTK_RANGE(app.preamp_scale), app.cfg.preamp[app.cfg.dolby_mode]);
-    g_signal_connect(app.preamp_scale, "value-changed",
-                     G_CALLBACK(on_preamp), NULL);
-    gtk_box_pack_start(GTK_BOX(prow), app.preamp_scale, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(root), prow, FALSE, FALSE, 0);
 
     GtkWidget *brow2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *btn_flat = gtk_button_new_with_label("Flatten equaliser");
