@@ -79,3 +79,8 @@ nothing is played into the headset.
 
 `~/.config/blackbeard_void_pro/config`, one `key = value` per line.
 Delete it to restore defaults.
+
+## License
+
+Blackbeard VOID PRO is licensed under the GNU General Public License v3.0.
+See [LICENSE](LICENSE) for details.
