@@ -69,11 +69,9 @@ tests/        test battery -- `make test`
 install.sh    interactive installer
 ```
 
-`make test` checks the build, the HID link (battery reading), that all three
-convolution generations actually output sound, the settings file, the
-desktop integration, single-instance behaviour and that no ghost sink is
-left after a `kill -9`. Audio tests route the chain into a null sink, so
-nothing is played into the headset.
+`make test` runs the safe build and static checks without affecting PipeWire.
+Live convolution and device diagnostics require an explicit opt-in,
+as explained below.
 
 ## Settings
 
@@ -114,3 +112,25 @@ python3 -m unittest discover -s tests -p 'test_wozt_ui_assets.py'
 For an optional portable x86_64 build, install `linuxdeploy` and its GTK
 plugin, then run `bash tools/build-appimage.sh`. Verify the resulting AppImage
 on another Linux desktop before release.
+
+## Tests et sécurité audio
+
+La commande `make test` exécute uniquement les **tests sûrs** : compilation,
+validation JSON, garde-fous de la suite et présence des filtres. Elle ne
+lance pas Blackbeard, ne lit pas `/dev/hidraw*` et ne modifie jamais
+PipeWire, le périphérique audio par défaut ou les flux des applications.
+
+Pour les tests matériels, fermer Blackbeard depuis le tray, puis lancer
+**volontairement**, en sachant que le son peut être interrompu :
+
+```bash
+bash tests/run_tests_live.sh device --i-accept-audio-interruption
+bash tests/run_tests_live.sh audio --i-accept-audio-interruption
+```
+
+Les tests audio créent leur propre sortie de test, enregistrent l'ancien
+périphérique par défaut et tentent de le restaurer même en cas d'échec.
+Ils ne tuent jamais les processus `pw-cli` d'autres applications. Les
+anciens tests `cleanup` qui tuaient l'application avec `kill -9` ne font
+plus partie de la suite automatisée ; ils nécessitent un banc d'essai
+PipeWire isolé avant d'être réintroduits.

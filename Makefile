@@ -35,7 +35,12 @@ install: $(BIN)
 tests/chain_probe: tests/chain_probe.c src/audio.c src/config.c
 	$(CC) -Isrc $(CFLAGS) $^ -o $@ $(LDLIBS)
 
-test: $(BIN) tests/chain_probe
-	./tests/run_tests.sh
+# Safe default: does not launch Blackbeard, alter PipeWire or poke HID.
+test: $(BIN)
+	bash ./tests/run_tests.sh safe
 
-.PHONY: all clean install test
+# Explicit opt-in; an empty BVP_LIVE_ACK is rejected by the live script.
+test-live-audio: $(BIN) tests/chain_probe
+	bash ./tests/run_tests_live.sh audio $(BVP_LIVE_ACK)
+
+.PHONY: all clean install test test-live-audio
