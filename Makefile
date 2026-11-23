@@ -3,7 +3,7 @@ BIN      := blackbeard_void_pro
 SRC      := $(wildcard src/*.c)
 OBJ      := $(SRC:.c=.o)
 PKGS     := gtk+-3.0 ayatana-appindicator3-0.1 hidapi-hidraw json-glib-1.0
-CFLAGS   += -O2 -Wall -Wextra -Wno-deprecated-declarations $(shell pkg-config --cflags $(PKGS))
+CFLAGS   += -O2 -Wall -Wextra $(shell pkg-config --cflags $(PKGS))
 LDLIBS   += $(shell pkg-config --libs $(PKGS)) -lm
 
 PREFIX   ?= $(HOME)/.local

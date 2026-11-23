@@ -122,6 +122,7 @@ static void schedule_audio(void)
 
 static gboolean on_eq_draw(GtkWidget *w, cairo_t *cr, gpointer data)
 {
+    (void)data;
     int width  = gtk_widget_get_allocated_width(w);
     int height = gtk_widget_get_allocated_height(w);
     const double pad = 8, span = 14.0;
@@ -338,6 +339,7 @@ static void on_band(GtkAdjustment *adj, gpointer data)
 
 static void on_preamp(GtkAdjustment *adj, gpointer data)
 {
+    (void)data;
     if (app.suppress) return;
     app.cfg.preamp[app.cfg.dolby_mode] = gtk_adjustment_get_value(adj);
     mark_dirty();
@@ -359,6 +361,8 @@ static void set_curve(const double *v)
 
 static void on_flat(GtkButton *b, gpointer data)
 {
+    (void)b;
+    (void)data;
     static const double flat[BVP_BANDS] = { 0 };
     set_curve(flat);
 }
@@ -419,6 +423,7 @@ static void push_led(void)
 
 static void on_color(GtkColorButton *btn, gpointer data)
 {
+    (void)data;
     if (app.suppress) return;
     GdkRGBA c;
     gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c);
@@ -457,6 +462,7 @@ static void on_headless(GtkToggleButton *b, gpointer data)
 
 static void on_bright(GtkRange *r, gpointer data)
 {
+    (void)data;
     if (app.suppress) return;
     app.cfg.brightness = (uint8_t)gtk_range_get_value(r);
     set_pct(app.bright_pct, app.cfg.brightness * 100 / 255);
@@ -467,6 +473,7 @@ static void on_bright(GtkRange *r, gpointer data)
 
 static gboolean poll_device(gpointer data)
 {
+    (void)data;
     bvp_status st = bvp_device_poll();
 
     /* One failed poll is not proof the dongle is gone: hidapi can miss a
