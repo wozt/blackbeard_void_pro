@@ -114,11 +114,15 @@ static char *render_icon(bvp_status st)
 
 static void on_show(GtkMenuItem *item, gpointer data)
 {
+    (void)item;
+    (void)data;
     gtk_window_present(GTK_WINDOW(main_window));
 }
 
 static void on_quit(GtkMenuItem *item, gpointer data)
 {
+    (void)item;
+    (void)data;
     GtkApplication *gapp = gtk_window_get_application(GTK_WINDOW(main_window));
     if (gapp)
         g_application_quit(G_APPLICATION(gapp));
@@ -142,8 +146,12 @@ void bvp_tray_init(GtkWidget *window)
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), mi_quit);
     gtk_widget_show_all(menu);
 
-    indicator = app_indicator_new("blackbeard-void-pro", "audio-headset",
-                                  APP_INDICATOR_CATEGORY_HARDWARE);
+    /* Equivalent to app_indicator_new(), without its deprecated wrapper.
+       Mirrors libayatana-appindicator's GObject construction properties. */
+    indicator = g_object_new(APP_INDICATOR_TYPE,
+                             "id", "blackbeard-void-pro",
+                             "category", "Hardware",
+                             "icon-name", "audio-headset", NULL);
     app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
     app_indicator_set_menu(indicator, GTK_MENU(menu));
 }

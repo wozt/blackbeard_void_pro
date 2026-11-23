@@ -503,13 +503,13 @@ static gboolean poll_device(gpointer data)
     gtk_widget_set_sensitive(app.color_btn,   st.dongle_present);
     gtk_widget_set_sensitive(app.bright_scale, st.dongle_present);
 
-    /* on re-plug the sink is recreated, so re-apply lighting and
-       rebuild the audio chain */
-    if (st.dongle_present && !app.last_present) {
+    /* On reconnect, also retry when the headset USB audio sink appeared
+       after HID: PipeWire can enumerate it several seconds later. */
+    if (st.dongle_present && !app.last_present)
         push_led();
-        if (app.cfg.dolby)
-            apply_audio();
-    }
+    if (st.dongle_present && app.cfg.dolby &&
+        (!app.last_present || !bvp_audio_active()))
+        apply_audio();
     app.last_present = st.dongle_present;
 
     bvp_tray_update(st);
@@ -878,6 +878,8 @@ static void on_activate(GtkApplication *gapp, gpointer data)
     }
     ui_built = true;
 
+    /* Only the primary instance may clean stale PipeWire chains. */
+    bvp_audio_cleanup_stale();
     build_ui();
     gtk_application_add_window(gapp, GTK_WINDOW(app.window));
     bvp_tray_init(app.window);
@@ -931,7 +933,6 @@ int main(int argc, char **argv)
     bvp_config_load(&app.cfg);
     clamp_mode();
     bvp_desktop_install();
-    bvp_audio_cleanup_stale();
 
     arg_headless = app.cfg.headless;
     for (int i = 1; i < argc; i++)
