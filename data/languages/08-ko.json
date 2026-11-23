@@ -1,0 +1,28 @@
+{
+  "id": "ko",
+  "name": "한국어",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>방식</b> (Dolby Surround 에뮬레이션)",
+    "<b>Startup</b>": "<b>시작</b>",
+    "<b>Equaliser</b>": "<b>이퀄라이저</b>",
+    "<b>Headset controls</b>": "<b>헤드셋 제어</b>",
+    "<small>Start at login</small>": "<small>로그인 시 시작</small>",
+    "<small>Headless</small>": "<small>백그라운드</small>",
+    "Normal (no processing)": "일반 (처리 없음)",
+    "Save": "저장",
+    "Load": "불러오기",
+    "Flat EQ": "EQ 초기화",
+    "Pre": "프리",
+    "Theme": "테마",
+    "Language": "언어",
+    "Reload themes and translations": "테마 및 번역 새로고침",
+    "Minimize": "최소화",
+    "Maximize or restore": "최대화 또는 복원",
+    "Hide to system tray": "트레이로 숨기기",
+    "Write the current settings to disk.": "현재 설정을 저장합니다.",
+    "Set every equaliser band to 0 dB.": "모든 대역을 0 dB로 설정합니다.",
+    "Colour of the headset lighting.": "헤드셋 조명 색상.",
+    "Lighting brightness, 0 to 255.": "밝기 0~255.",
+    "Headset microphone.": "헤드셋 마이크."
+  }
+}

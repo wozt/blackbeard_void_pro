@@ -1,0 +1,28 @@
+{
+  "id": "ru",
+  "name": "Русский",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>Режим</b> (эмуляция Dolby Surround)",
+    "<b>Startup</b>": "<b>Запуск</b>",
+    "<b>Equaliser</b>": "<b>Эквалайзер</b>",
+    "<b>Headset controls</b>": "<b>Настройки гарнитуры</b>",
+    "<small>Start at login</small>": "<small>Запуск при входе</small>",
+    "<small>Headless</small>": "<small>В фоновом режиме</small>",
+    "Normal (no processing)": "Обычный (без обработки)",
+    "Save": "Сохранить",
+    "Load": "Загрузить",
+    "Flat EQ": "Сброс EQ",
+    "Pre": "Пред.",
+    "Theme": "Тема",
+    "Language": "Язык",
+    "Reload themes and translations": "Обновить темы и переводы",
+    "Minimize": "Свернуть",
+    "Maximize or restore": "Развернуть или восстановить",
+    "Hide to system tray": "Скрыть в область уведомлений",
+    "Write the current settings to disk.": "Сохранить текущие настройки.",
+    "Set every equaliser band to 0 dB.": "Установить все полосы на 0 дБ.",
+    "Colour of the headset lighting.": "Цвет подсветки гарнитуры.",
+    "Lighting brightness, 0 to 255.": "Яркость от 0 до 255.",
+    "Headset microphone.": "Микрофон гарнитуры."
+  }
+}

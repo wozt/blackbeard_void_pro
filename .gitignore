@@ -17,3 +17,7 @@ research/
 .DS_Store
 test_sound_files/
 tests/chain_probe
+
+# WOZT UI patch backups and AppImage build output
+/.wozt-ui-backups/
+/dist/

@@ -1,0 +1,28 @@
+{
+  "id": "zh-cn",
+  "name": "简体中文",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>模式</b>（杜比环绕声模拟）",
+    "<b>Startup</b>": "<b>启动</b>",
+    "<b>Equaliser</b>": "<b>均衡器</b>",
+    "<b>Headset controls</b>": "<b>耳机控制</b>",
+    "<small>Start at login</small>": "<small>登录时启动</small>",
+    "<small>Headless</small>": "<small>后台运行</small>",
+    "Normal (no processing)": "普通（不处理）",
+    "Save": "保存",
+    "Load": "加载",
+    "Flat EQ": "均衡器归零",
+    "Pre": "前置",
+    "Theme": "主题",
+    "Language": "语言",
+    "Reload themes and translations": "重新加载主题和翻译",
+    "Minimize": "最小化",
+    "Maximize or restore": "最大化或还原",
+    "Hide to system tray": "隐藏到系统托盘",
+    "Write the current settings to disk.": "保存当前设置。",
+    "Set every equaliser band to 0 dB.": "将所有频段设为 0 dB。",
+    "Colour of the headset lighting.": "耳机灯光颜色。",
+    "Lighting brightness, 0 to 255.": "亮度 0–255。",
+    "Headset microphone.": "耳机麦克风。"
+  }
+}

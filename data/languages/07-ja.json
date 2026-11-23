@@ -1,0 +1,28 @@
+{
+  "id": "ja",
+  "name": "日本語",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>方式</b> (Dolby Surround エミュレーション)",
+    "<b>Startup</b>": "<b>起動</b>",
+    "<b>Equaliser</b>": "<b>イコライザー</b>",
+    "<b>Headset controls</b>": "<b>ヘッドセット操作</b>",
+    "<small>Start at login</small>": "<small>ログイン時に起動</small>",
+    "<small>Headless</small>": "<small>バックグラウンド</small>",
+    "Normal (no processing)": "通常 (処理なし)",
+    "Save": "保存",
+    "Load": "読み込み",
+    "Flat EQ": "EQを平坦に",
+    "Pre": "プリ",
+    "Theme": "テーマ",
+    "Language": "言語",
+    "Reload themes and translations": "テーマと翻訳を再読み込み",
+    "Minimize": "最小化",
+    "Maximize or restore": "最大化 / 元に戻す",
+    "Hide to system tray": "トレイに隠す",
+    "Write the current settings to disk.": "現在の設定を保存します。",
+    "Set every equaliser band to 0 dB.": "全帯域を 0 dB に戻します。",
+    "Colour of the headset lighting.": "ヘッドセットの照明色。",
+    "Lighting brightness, 0 to 255.": "明るさ 0〜255。",
+    "Headset microphone.": "ヘッドセットのマイク。"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "pt",
+  "name": "Português",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>Método</b> (emulação Dolby Surround)",
+    "<b>Startup</b>": "<b>Arranque</b>",
+    "<b>Equaliser</b>": "<b>Equalizador</b>",
+    "<b>Headset controls</b>": "<b>Controlos do headset</b>",
+    "<small>Start at login</small>": "<small>Iniciar na sessão</small>",
+    "<small>Headless</small>": "<small>Em segundo plano</small>",
+    "Normal (no processing)": "Normal (sem processamento)",
+    "Save": "Guardar",
+    "Load": "Carregar",
+    "Flat EQ": "EQ plano",
+    "Pre": "Pré",
+    "Theme": "Tema",
+    "Language": "Idioma",
+    "Reload themes and translations": "Recarregar temas e traduções",
+    "Minimize": "Minimizar",
+    "Maximize or restore": "Maximizar ou restaurar",
+    "Hide to system tray": "Ocultar na área de notificação",
+    "Write the current settings to disk.": "Guardar as definições atuais.",
+    "Set every equaliser band to 0 dB.": "Definir todas as bandas para 0 dB.",
+    "Colour of the headset lighting.": "Cor da iluminação do headset.",
+    "Lighting brightness, 0 to 255.": "Brilho de 0 a 255.",
+    "Headset microphone.": "Microfone do headset."
+  }
+}

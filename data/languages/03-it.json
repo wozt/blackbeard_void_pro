@@ -1,0 +1,28 @@
+{
+  "id": "it",
+  "name": "Italiano",
+  "translations": {
+    "<b>Method</b> (Dolby Surround Emulation)": "<b>Metodo</b> (emulazione Dolby Surround)",
+    "<b>Startup</b>": "<b>Avvio</b>",
+    "<b>Equaliser</b>": "<b>Equalizzatore</b>",
+    "<b>Headset controls</b>": "<b>Controlli cuffie</b>",
+    "<small>Start at login</small>": "<small>Avvia all’accesso</small>",
+    "<small>Headless</small>": "<small>In background</small>",
+    "Normal (no processing)": "Normale (senza elaborazione)",
+    "Save": "Salva",
+    "Load": "Carica",
+    "Flat EQ": "EQ piatto",
+    "Pre": "Pre",
+    "Theme": "Tema",
+    "Language": "Lingua",
+    "Reload themes and translations": "Ricarica temi e traduzioni",
+    "Minimize": "Riduci",
+    "Maximize or restore": "Ingrandisci o ripristina",
+    "Hide to system tray": "Nascondi nell’area di notifica",
+    "Write the current settings to disk.": "Salva le impostazioni correnti.",
+    "Set every equaliser band to 0 dB.": "Imposta tutte le bande a 0 dB.",
+    "Colour of the headset lighting.": "Colore illuminazione cuffie.",
+    "Lighting brightness, 0 to 255.": "Luminosità da 0 a 255.",
+    "Headset microphone.": "Microfono delle cuffie."
+  }
+}

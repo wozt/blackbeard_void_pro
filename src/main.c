@@ -16,6 +16,8 @@
 #include "icons.h"
 #include "device.h"
 #include "tray.h"
+#include "wozt_ui.h"
+/* WOZT_UI_MIGRATION_V1 */
 
 /* Convolution 3.0 measures better than 2.0 against the captures -- half
    the residual error on material it has never seen -- and 2.0 is still
@@ -54,6 +56,9 @@ typedef struct {
     guint       led_timer;
     GtkWidget  *autostart_check;
     GtkWidget  *headless_check;
+    WoztUI     *ui;
+    GtkWidget  *top_row;
+    GtkWidget  *bottom_row;
 } App;
 
 static App app;
@@ -531,13 +536,46 @@ static GtkWidget *small_check(const char *text)
     return b;
 }
 
+/* Reorient existing GTK widgets: never reconstruct controls on resize. */
+static gboolean on_ui_resize(GtkWidget *window, GdkEventConfigure *event, gpointer data)
+{
+    (void)window; (void)data;
+    if (!app.top_row || !app.bottom_row) return FALSE;
+    GtkOrientation next = event->width < 790
+        ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
+    if (gtk_orientable_get_orientation(GTK_ORIENTABLE(app.top_row)) != next)
+        gtk_orientable_set_orientation(GTK_ORIENTABLE(app.top_row), next);
+    if (gtk_orientable_get_orientation(GTK_ORIENTABLE(app.bottom_row)) != next)
+        gtk_orientable_set_orientation(GTK_ORIENTABLE(app.bottom_row), next);
+    return FALSE;
+}
+
+/* Rebuilding the method's translated label must never restart PipeWire. */
+static void on_ui_language_changed(gpointer data)
+{
+    (void)data;
+    if (!app.mode_combo) return;
+    int active = gtk_combo_box_get_active(GTK_COMBO_BOX(app.mode_combo));
+    bool was_suppressed = app.suppress;
+    app.suppress = true;
+    gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(app.mode_combo));
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo),
+                                   wozt_ui_tr(app.ui, "Normal (no processing)"));
+    for (int m = 0; m < BVP_MODES_OFFERED; m++)
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app.mode_combo), mode_names[m]);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app.mode_combo), active >= 0 ? active : 0);
+    app.suppress = was_suppressed;
+}
+
 static void build_ui(void)
 {
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app.window), "Blackbeard VOID PRO");
-    /* -1: let the content decide the height, otherwise the window keeps a
-       band of nothing under the equaliser. */
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 560, -1);
+    /* Stable GTK3/X11 WM_CLASS, matching the generated desktop entry. */
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_window_set_wmclass(GTK_WINDOW(app.window), BVP_APP_ID, BVP_APP_ID);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    gtk_window_set_default_size(GTK_WINDOW(app.window), 790, 461);
     char *icon = bvp_desktop_icon_path();
     if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
         GError *ie = NULL;
@@ -555,47 +593,38 @@ static void build_ui(void)
     g_signal_connect(app.window, "delete-event",
                      G_CALLBACK(gtk_widget_hide_on_delete), NULL);
 
-    GtkCssProvider *css = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(css,
-        "window { font-size: 90%; }"
-        "entry { min-height: 0; min-width: 0; padding: 1px 2px; }",
-        -1, NULL);
-    gtk_style_context_add_provider_for_screen(
-        gdk_screen_get_default(), GTK_STYLE_PROVIDER(css),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    g_object_unref(css);
+    /* Window chrome/theme/language and vertical scrolling are isolated
+       from the headset/audio code. The existing close action still hides. */
+    char *header_icon = bvp_desktop_icon_path();
+    app.ui = wozt_ui_new(app.window, header_icon);
+    g_free(header_icon);
+    GtkWidget *outer = wozt_ui_body(app.ui);
 
-    GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    gtk_container_set_border_width(GTK_CONTAINER(outer), 10);
-    gtk_container_add(GTK_CONTAINER(app.window), outer);
-
-    /* Four quadrants, separated by rules:
-         1  method            |  2  startup
-         3  Dolby + equaliser |  4  lighting and microphone            */
-    GtkWidget *grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
-    gtk_box_pack_start(GTK_BOX(outer), grid, TRUE, TRUE, 0);
-
-    GtkWidget *z1 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    GtkWidget *z2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    GtkWidget *z3 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    GtkWidget *z4 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    gtk_grid_attach(GTK_GRID(grid), z1, 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_VERTICAL),
-                    1, 0, 1, 3);
-    gtk_grid_attach(GTK_GRID(grid), z2, 2, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                    0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
-                    2, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), z3, 0, 2, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), z4, 2, 2, 1, 1);
+    /* Two balanced rows stack on narrow screens; the equaliser retains
+       its own controls and no horizontal scrolling is introduced. */
+    app.top_row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    app.bottom_row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_box_pack_start(GTK_BOX(outer), app.top_row, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(outer), app.bottom_row, TRUE, TRUE, 0);
+    GtkWidget *z1 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *z2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *z3 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *z4 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *panels[] = { z1, z2, z3, z4 };
+    for (guint i = 0; i < G_N_ELEMENTS(panels); i++)
+        gtk_style_context_add_class(gtk_widget_get_style_context(panels[i]), "wozt-panel");
+    gtk_widget_set_hexpand(z1, TRUE);
     gtk_widget_set_hexpand(z3, TRUE);
+    gtk_box_pack_start(GTK_BOX(app.top_row), z1, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(app.top_row), z2, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(app.bottom_row), z3, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(app.bottom_row), z4, FALSE, FALSE, 0);
+    g_signal_connect(app.window, "configure-event", G_CALLBACK(on_ui_resize), NULL);
 
     /* ---- 1 : which method ---- */
     GtkWidget *mrow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     app.mode_dot = gtk_label_new(NULL);
+    g_object_set_data(G_OBJECT(app.mode_dot), "wozt-dynamic", GINT_TO_POINTER(1));
     gtk_box_pack_start(GTK_BOX(mrow), app.mode_dot, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(mrow),
                        labelled("<b>Method</b> (Dolby Surround Emulation)",
@@ -621,6 +650,7 @@ static void build_ui(void)
 
     GtkWidget *btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     app.save_btn = gtk_button_new_with_label("Save");
+    gtk_style_context_add_class(gtk_widget_get_style_context(app.save_btn), "wozt-primary");
     gtk_widget_set_sensitive(app.save_btn, FALSE);
     gtk_widget_set_tooltip_text(app.save_btn, "Write the current settings to disk.");
     g_signal_connect(app.save_btn, "clicked", G_CALLBACK(on_save), NULL);
@@ -661,6 +691,8 @@ static void build_ui(void)
 
 
     /* ---- 3 : curve, equaliser, preamp ---- */
+    gtk_box_pack_start(GTK_BOX(z3),
+                       labelled("<b>Equaliser</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
     app.eq_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(app.eq_area, -1, 80);
     g_signal_connect(app.eq_area, "draw", G_CALLBACK(on_eq_draw), NULL);
@@ -724,6 +756,8 @@ static void build_ui(void)
        A grid rather than two boxes: the caption, the icon and the slider
        line up row by row, so both columns read at the same heights as the
        equaliser next to them. */
+    gtk_box_pack_start(GTK_BOX(z4),
+                       labelled("<b>Headset controls</b>", GTK_ALIGN_START), FALSE, FALSE, 0);
     GtkWidget *side = gtk_grid_new();
     gtk_grid_set_column_spacing(GTK_GRID(side), 6);
     gtk_grid_set_row_spacing(GTK_GRID(side), 2);
@@ -754,6 +788,7 @@ static void build_ui(void)
                      G_CALLBACK(on_bright), NULL);
     gtk_grid_attach(GTK_GRID(side), app.bright_scale, 0, 2, 1, 1);
     app.bright_pct = gtk_label_new(NULL);
+    g_object_set_data(G_OBJECT(app.bright_pct), "wozt-dynamic", GINT_TO_POINTER(1));
     set_pct(app.bright_pct, app.cfg.brightness * 100 / 255);
     gtk_grid_attach(GTK_GRID(side), app.bright_pct, 0, 3, 1, 1);
 
@@ -778,6 +813,7 @@ static void build_ui(void)
     g_signal_connect(app.mic_scale, "value-changed", G_CALLBACK(on_mic), NULL);
     gtk_grid_attach(GTK_GRID(side), app.mic_scale, 2, 1, 1, 2);
     app.mic_pct = gtk_label_new(NULL);
+    g_object_set_data(G_OBJECT(app.mic_pct), "wozt-dynamic", GINT_TO_POINTER(1));
     set_pct(app.mic_pct, app.cfg.mic_gain);
     gtk_grid_attach(GTK_GRID(side), app.mic_pct, 2, 3, 1, 1);
 
@@ -791,6 +827,7 @@ static void build_ui(void)
 
     app.batt_percent = -1;
     app.batt_area = gtk_drawing_area_new();
+    g_object_set_data(G_OBJECT(app.batt_area), "wozt-dynamic", GINT_TO_POINTER(1));
     gtk_widget_set_size_request(app.batt_area, 12, -1);
     gtk_widget_set_vexpand(app.batt_area, TRUE);
     gtk_widget_set_halign(app.batt_area, GTK_ALIGN_CENTER);
@@ -798,10 +835,14 @@ static void build_ui(void)
     gtk_grid_attach(GTK_GRID(side), app.batt_area, 4, 1, 1, 2);
 
     app.batt_label = gtk_label_new(NULL);
+    g_object_set_data(G_OBJECT(app.batt_label), "wozt-dynamic", GINT_TO_POINTER(1));
     gtk_label_set_markup(GTK_LABEL(app.batt_label), "<small>--</small>");
     gtk_grid_attach(GTK_GRID(side), app.batt_label, 4, 3, 1, 1);
 
     gtk_box_pack_start(GTK_BOX(z4), side, TRUE, TRUE, 0);
+    /* Save English source strings before live switching; no audio signal is emitted. */
+    wozt_ui_on_language_change(app.ui, on_ui_language_changed, NULL);
+    wozt_ui_retranslate(app.ui);
 }
 
 /* Leaving the filter chain behind would show up as a ghost sink, so quit

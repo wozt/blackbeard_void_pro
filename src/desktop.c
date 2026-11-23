@@ -44,7 +44,8 @@ static char *entry_text(bool headless)
         "Terminal=false\n"
         "Categories=AudioVideo;Audio;Settings;\n"
         "Keywords=corsair;headset;void;surround;equaliser;\n"
-        "StartupNotify=false\n",
+        "StartupNotify=false\n"
+        "StartupWMClass=" BVP_APP_ID "\n",
         exe, headless ? " --headless" : "");
     g_free(exe);
     return txt;

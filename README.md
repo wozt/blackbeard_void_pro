@@ -84,3 +84,33 @@ Delete it to restore defaults.
 
 Blackbeard VOID PRO is licensed under the GNU General Public License v3.0.
 See [LICENSE](LICENSE) for details.
+
+## WOZT GTK Standard interface
+
+The GTK3 dashboard now uses a borderless custom header (drag, double-click
+maximize, minimize, restore, and tray-hide), eight resize edges/corners,
+responsive two-column panels that stack in narrow windows, vertical-only
+scrolling, and the seven JSON palettes from
+[wozt-gtk-standard](https://github.com/wozt/wozt-gtk-standard).
+
+Theme and language IDs are stored separately in
+`~/.config/blackbeard_void_pro/ui.ini`; the previous audio configuration file
+remains untouched. JSON resources live in `data/themes/` and
+`data/languages/`, with live selectors and reload in the header. Valid JSON files placed in
+`~/.config/blackbeard_void_pro/themes/` or `languages/` can extend or override
+the bundled resources. English is
+the fallback for untranslated audio-specific diagnostics and tooltips.
+
+Debian build requirements now include `libjson-glib-dev`, in addition to the
+existing GTK3, libayatana-appindicator and hidapi development packages.
+
+```bash
+sudo apt install libgtk-3-dev libjson-glib-dev libayatana-appindicator3-dev libhidapi-dev
+make -j"$(nproc)"
+python3 -m unittest discover -s tests -p 'test_wozt_ui_assets.py'
+./blackbeard_void_pro
+```
+
+For an optional portable x86_64 build, install `linuxdeploy` and its GTK
+plugin, then run `bash tools/build-appimage.sh`. Verify the resulting AppImage
+on another Linux desktop before release.

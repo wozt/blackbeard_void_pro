@@ -2,7 +2,7 @@
 BIN      := blackbeard_void_pro
 SRC      := $(wildcard src/*.c)
 OBJ      := $(SRC:.c=.o)
-PKGS     := gtk+-3.0 ayatana-appindicator3-0.1 hidapi-hidraw
+PKGS     := gtk+-3.0 ayatana-appindicator3-0.1 hidapi-hidraw json-glib-1.0
 CFLAGS   += -O2 -Wall -Wextra -Wno-deprecated-declarations $(shell pkg-config --cflags $(PKGS))
 LDLIBS   += $(shell pkg-config --libs $(PKGS)) -lm
 
@@ -25,6 +25,10 @@ install: $(BIN)
 	  for f in filters/$$v/*.wav; do \
 	    install -Dm644 "$$f" $(PREFIX)/share/blackbeard_void_pro/filters/$$v/$$(basename $$f); \
 	  done; \
+	done
+	for kind in themes languages; do \
+	  install -d $(PREFIX)/share/blackbeard_void_pro/$$kind; \
+	  install -m644 data/$$kind/*.json $(PREFIX)/share/blackbeard_void_pro/$$kind/; \
 	done
 	@echo "Installed. The icon and menu entry are published on first run."
 
