@@ -21,3 +21,4 @@ tests/chain_probe
 # WOZT UI patch backups and AppImage build output
 /.wozt-ui-backups/
 /dist/
+__pycache__/
