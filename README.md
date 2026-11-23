@@ -134,3 +134,25 @@ Ils ne tuent jamais les processus `pw-cli` d'autres applications. Les
 anciens tests `cleanup` qui tuaient l'application avec `kill -9` ne font
 plus partie de la suite automatisée ; ils nécessitent un banc d'essai
 PipeWire isolé avant d'être réintroduits.
+
+## CI Linux et artefact AppImage x86_64
+
+GitHub Actions (`.github/workflows/ci.yml`) compile `main` avec GCC et
+`-Werror`, puis executent `make test` (suite **sure** sans acces au casque ni
+changement PipeWire). Une fois **et seulement si** ce job reussit, le job
+`build-appimage` cree un paquet AppImage x86_64 et valide statiquement son
+contenu (binaire, icone, entree desktop, filtres v1/v2/v3, sept themes et
+neuf langues), sans lancer le programme.
+
+Telecharger l'archive sous **Actions > derniere execution reussie > Artifacts >
+Blackbeard-VOID-PRO-linux-x86_64-AppImage**, puis extraire l'AppImage et
+executer `chmod +x` sur celle-ci avant le lancement. L'artefact est conserve
+14 jours. Il n'y a **aucune publication automatique de release** : la
+compatibilite avec le casque, le tray, PipeWire et l'environnement cible doit
+etre validee manuellement avant une release.
+
+L'AppImage inclut les dependances GUI via linuxdeploy et son plugin GTK3,
+mais utilise toujours les outils audio du systeme hote (`pw-cli`, `pactl`)
+et necessite les autorisations USB/HID appropriees. Il s'agit pour l'instant
+d'une distribution de test, construite sur Ubuntu 24.04 : ne pas la presenter
+comme compatible avec toutes les distributions Linux sans essais.
