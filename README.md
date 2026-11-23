@@ -156,3 +156,27 @@ mais utilise toujours les outils audio du systeme hote (`pw-cli`, `pactl`)
 et necessite les autorisations USB/HID appropriees. Il s'agit pour l'instant
 d'une distribution de test, construite sur Ubuntu 24.04 : ne pas la presenter
 comme compatible avec toutes les distributions Linux sans essais.
+
+## Automatic incremental releases
+
+Each **successful push to `main`** now builds the project with GCC warnings
+considered errors, runs the safe-only tests, checks the resulting AppImage,
+and publishes a GitHub Release containing the AppImage and a SHA-256 checksum.
+Pull requests and manual CI runs do **not** publish releases. No live headset
+or PipeWire tests execute in GitHub Actions.
+
+The release tag starts at `v1.0.0.0` if no matching tag exists, then increments
+the fourth component: `v1.0.0.1`, `v1.0.0.2`, etc. Existing matching tags
+are not overwritten. Other version families are ignored. To change the
+`1.0.0` family, update `SERIES` in `tools/next_release_version.py` deliberately.
+
+This is a four-part application build version (not conventional three-part
+SemVer). Only the GitHub tag/release and the downloadable AppImage filename
+carry this number: the C application version is not changed automatically.
+No version-bump commit or automatic force-push is ever created.
+
+Releases: https://github.com/wozt/blackbeard_void_pro/releases
+
+**Note:** The release pipeline validates packaging and resources but cannot
+verify playback or headset behavior on the GitHub runner. Test the first
+AppImage on a real Linux desktop before treating it as a supported release.

@@ -1,4 +1,4 @@
-# Blackbeard VOID PRO — build-only CI. NEVER run live audio/HID tests here.
+# Blackbeard VOID PRO — safe CI and validated AppImage releases; NO live audio/HID tests.
 name: Blackbeard CI
 
 on:
@@ -8,7 +8,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# The workflow never needs write access to the repository or secrets.
+# Read-only by default; only the gated main-branch release job can publish.
 permissions:
   contents: read
 
@@ -121,3 +121,60 @@ jobs:
           path: dist/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 14
+
+  # BVP_AUTO_RELEASE_V1: publish only a validated AppImage from a main push.
+  # A pull request or a manual workflow run can build, but cannot publish.
+  publish-release:
+    name: Publish incremental GitHub Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-safe-tests, build-appimage]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source and all existing tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the verified AppImage from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: Blackbeard-VOID-PRO-linux-x86_64-AppImage
+          path: dist/release
+
+      - name: Select next incremental version from remote tags
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+          tag="$(python3 tools/next_release_version.py)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Publishing $tag for commit $GITHUB_SHA"
+
+      - name: Publish versioned AppImage and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(dist/release/*.AppImage)
+          if (( ${#packages[@]} != 1 )); then
+            printf 'Expected exactly one AppImage, got %d\n' "${#packages[@]}" >&2
+            exit 1
+          fi
+          asset="Blackbeard_VOID_PRO-${RELEASE_TAG}-x86_64.AppImage"
+          install -m 0755 -- "${packages[0]}" "$asset"
+          sha256sum "$asset" > "$asset.sha256"
+          # gh creates the immutable version tag at the exact tested SHA.
+          # Explicit --latest: four-part versions are not SemVer.
+          gh release create "$RELEASE_TAG" "$asset" "$asset.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "Blackbeard VOID PRO $RELEASE_TAG" \
+            --generate-notes \
+            --latest

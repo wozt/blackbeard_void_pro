@@ -29,6 +29,7 @@ fi
 if [[ "$mode" == safe || "$mode" == guard ]]; then
     echo '[SAFE] Checking test runner safety guards'
     python3 -m unittest discover -s tests -p 'test_runner_safety.py' -v
+    python3 -m unittest discover -s tests -p 'test_release_version.py' -v
 fi
 if [[ "$mode" == safe || "$mode" == filters ]]; then
     echo '[SAFE] Checking impulse-response files (read-only)'
